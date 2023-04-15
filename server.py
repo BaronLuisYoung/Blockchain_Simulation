@@ -23,7 +23,6 @@ def exit():
     in_sock.close()
     for sock in out_socks:
         sock[0].close()
-    print("exiting program", flush=True)
     stdout.flush() #from sys lib
     #exit w/ status 0 
     _exit(0) #imported from os lib
@@ -74,7 +73,7 @@ def init_client_id(client_id, port):
 #simluates newtork delay then handles recieved message 
 def handle_msg(data, addr):
     #simulate 3 seconds message-passing delay
-    sleep(3)#imported from time library
+    #sleep(3)#imported from time library
     data = data.decode() #decode byte data into a string
 
     client_request = data.split() 

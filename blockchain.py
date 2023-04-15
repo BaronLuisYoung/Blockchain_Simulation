@@ -87,7 +87,7 @@ class Blockchain:
             chain = []
             while curr is not None:
                 #chain_str + "("+ curr.trans[0] +","+ curr.trans[1] +","+ curr.trans[2] +")"
-                chain.append(str(curr.trans).replace(" ", "").replace("'",""))
+                chain.append((str(curr.trans)[:-1]+ "," + curr.hashed_prev_block + ")").replace(" ", "").replace("'",""))
                 curr = curr.prev
             chain_str = ""
             for x in reversed(chain):

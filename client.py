@@ -14,7 +14,6 @@ def wait(t):
 
 def exit():
     out_sock.close()
-    print("exiting program")
     #flush console ouput buffer in case there are remaining prints
     stdout.flush()
     _exit(0)
@@ -22,6 +21,7 @@ def exit():
 def get_user_input():
     #print("Please input user ID:")
     user_input_id = sys.argv
+    wait(int(sys.argv[1]))
     user_input_id = "P" + user_input_id[1]
     try:
         #send user input string to server, converted into bytes
@@ -49,7 +49,7 @@ def get_user_input():
         #print("sent latest input to server")
 
 def handle_msg(data):
-    sleep(3)
+    #sleep(3)
     #decode data into string 
     data = data.decode()
     print(data)
