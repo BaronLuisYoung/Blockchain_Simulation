@@ -7,15 +7,17 @@ hash_func = lambda x: sha256(x.encode('utf-8')).hexdigest()
 
 #block to contain a hash ptr - H , transaction - T and nonce - N
 class Block:
-    def compute_nonce(self, trans): 
+    def compute_hash(self, trans): 
         computed_nonce = 0 
         #print(trans)
-        temp_nonce = hash_func(self.hashed_prev_block + (trans[0] + trans[1] + trans[2]) + str(computed_nonce))
         # getto way to determine if first two bits are zero since only 0-3 have 00XX
-        while int((bin(int(temp_nonce[0], 16))), 2) > 3:      
+        while True:      
+            digest = hash_func(str(self.prev.hashed_prev_block) + (str(trans[0]) + str(trans[1]) + str(trans[2])) + str(computed_nonce))
+            #print(int(digest[0], 16))
+            if int(digest[0], 16) <= 3:
+                return (digest, computed_nonce )
             computed_nonce = computed_nonce + 1 
-            temp_nonce = hash_func(self.hashed_prev_block + (trans[0] + trans[1] + trans[2]) + str(computed_nonce))
-        return temp_nonce
+        
 
     def __init__(self, prev, trans):
         #print(f"Building Block: {prev} and {trans}")
@@ -24,18 +26,12 @@ class Block:
             #pntr whatever we want 
             self.trans = trans 
             self.hashed_prev_block = '0'*64
+            self.nonce = '0'
             #same nonce calculation 
-            self.nonce = self.compute_nonce(trans)
         else:
             self.prev = prev
             self.trans = trans 
-            if prev.prev == None:
-                temp_prev = '0'
-            else:
-                #print(type(prev))
-                temp_prev = str(prev)
-            self.hashed_prev_block = hash_func(temp_prev + (prev.trans[0] + prev.trans[1] + prev.trans[2]) + prev.nonce)
-            self.nonce = self.compute_nonce(trans)
+            self.hashed_prev_block, self.nonce = self.compute_hash(self.prev.trans)
 
 class Blockchain:
     def __init__(self):
