@@ -20,16 +20,18 @@ def exit():
     _exit(0)
 
 def get_user_input():
-    print("Please input user ID:")
-    user_input_id = input()
+    #print("Please input user ID:")
+    user_input_id = sys.argv
+    user_input_id = "P" + user_input_id[1]
     try:
         #send user input string to server, converted into bytes
         out_sock.sendall(bytes(user_input_id, "utf-8"))
         #handling exception in case trying to send data to closed connection 
     except:
         print("exception in sending to server")
+        
 
-    print("Please input transaction or query current balance:")
+    #print("Please input transaction or query current balance:")
     while True:
         user_input = input()
         if user_input.split()[0] == "exit":
@@ -42,9 +44,9 @@ def get_user_input():
                 out_sock.sendall(bytes(user_input, "utf-8"))
                 #handling exception in case trying to send data to closed connection 
             except:
-                print("exception in sending to server")
+                #print("exception in sending to server")
                 continue
-        print("sent latest input to server")
+        #print("sent latest input to server")
 
 def handle_msg(data):
     sleep(3)
@@ -70,11 +72,11 @@ if __name__ == "__main__":
             out_sock.connect((SERVER_IP, SERVER_PORT))
             break
         except:
-            print(f"connection failed on address: {SERVER_IP}, port: {SERVER_PORT}\n")
+            #print(f"connection failed on address: {SERVER_IP}, port: {SERVER_PORT}\n")
             sleep(2)
-            print("attempting to connect ... \n")
+            #print("attempting to connect ... \n")
             continue
-    print("sucess, connected to server")
+    #print("sucess, connected to server")
 
     #spawn new thread to keep waiting for user inputs 
     #so user input and socket receive do not block eachother
@@ -85,10 +87,10 @@ if __name__ == "__main__":
         try:
         #wait to recive new data, 1024
             data = out_sock.recv(1024)
-            print(f"Data recieved from server: {data.decode()}")
+            print(f"{data.decode()}")
     #handle exception in case connection failure
         except:
-            print("exception in receiving")
+            #print("exception in receiving")
             break 
         if not data:
             #close own socket since other end closed

@@ -19,11 +19,13 @@ class Block:
 
     def __init__(self, prev, trans):
         #print(f"Building Block: {prev} and {trans}")
-        if prev is None and trans is None: #if genesis block
+        if prev is None: #if genesis block
             self.prev = None
-            self.trans = ('0','0','0') 
-            self.hashed_prev_block = hash_func('0'*256)
-            self.nonce = '0'
+            #pntr whatever we want 
+            self.trans = trans 
+            self.hashed_prev_block = '0'*64
+            #same nonce calculation 
+            self.nonce = self.compute_nonce(trans)
         else:
             self.prev = prev
             self.trans = trans 
@@ -40,18 +42,16 @@ class Blockchain:
         self.head = None
 
     def add_block(self, trans):
-        if self.head == None:
-            self.head = Block(None,None)
         self.head = Block(self.head, trans)
 
     def check_transfer(self, client_id, trans_amt): #client_id is the sender
         if self.head == None:
-           if 10 - trans_amt >= 0:
-               return 1
+           if 10 - trans_amt < 0:
+               return -1
 
         balance = 10
         curr = self.head
-        while curr.prev is not None: 
+        while curr is not None: 
             if curr.trans[0] == client_id: #if transaction is a loss
                 balance -= int(curr.trans[2][1]) #subtract from init balance 
             elif curr.trans[1] == client_id: #if transaction is a gain 
@@ -69,7 +69,7 @@ class Blockchain:
         balance = 10
         if curr == None:
             return balance
-        while curr.prev is not None: 
+        while curr is not None: 
             if curr.trans[0] == client_id: #if transaction is a loss
                 balance -= int(curr.trans[2][1]) #subtract form init balance 
             elif curr.trans[1] == client_id: #if transaction is a gain 
@@ -78,9 +78,20 @@ class Blockchain:
         return balance
 
     def print_chain(self):
-        print("Transaction History:")
+        #print("Transaction History:")
+
         curr = self.head
-        while curr.prev is not None:
-            print(f"<Hash ={curr.hashed_prev_block}, Trans={curr.trans}, Nonce={curr.nonce}>")
-            curr = curr.prev
+        if curr == None:
+            print("")
+        else: 
+            chain = []
+            while curr is not None:
+                #chain_str + "("+ curr.trans[0] +","+ curr.trans[1] +","+ curr.trans[2] +")"
+                chain.append(str(curr.trans).replace(" ", "").replace("'",""))
+                curr = curr.prev
+            chain_str = ""
+            for x in reversed(chain):
+                chain_str = chain_str + x
+            print("[" + chain_str.replace(")(" , "), (") + "]", flush=True)
+        
 #___________________________________________________________#

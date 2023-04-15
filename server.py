@@ -38,24 +38,30 @@ def send_msg_to_client(port, data):
         print(f"exception in sending port {port}", flush=True)
 
 def process_transfer_request(port, recipient_id, amnt): #sender, recv, amnt 
-    new_balance = Blockchain.check_transfer(active_clients[port], int(amnt[1]))
+    new_balance = Blockchain.check_transfer(active_clients[port], int(amnt[1:]))
     if new_balance != -1: 
         #create block and add it to chain
         trans = (active_clients[port], recipient_id, amnt) # Trasaction of format <Sender, Reciever, amount>
         Blockchain.add_block(trans)
-        return f"Transfer successful, {active_clients[port]} -> {recipient_id}"
+        return "Success"
     else:
-        return "Transfer failed, insufficent funds"
+        return "Insufficient Balance"
 
 def get_user_input():
     while True:
         user_input = input()
-        if user_input == "Print":
+        if user_input == "Blockchain":
             Blockchain.print_chain()   
         elif user_input == "exit":
             exit()
-        elif user_input.split()[0] == "wait":
+        elif user_input == "wait":
             wait(int(user_input.split()[1]))
+        elif user_input == "Balance":
+            data = "" 
+            for port in active_clients:
+                data = data + active_clients[port] + ": $" + str(Blockchain.check_balance(active_clients[port])) + ", "
+            print(data.strip()[:-1])
+            #imlement for other request that fail
         else:
             break
 
@@ -63,7 +69,7 @@ def get_user_input():
 def init_client_id(client_id, port):
    #print(port, client_id)
    active_clients[port] = client_id.decode("utf-8")
-   print(f"New client ID: {active_clients[port]} added on port {port}")
+   #print(f"New client ID: {active_clients[port]} added on port {port}")
 
 #simluates newtork delay then handles recieved message 
 def handle_msg(data, addr):
@@ -80,36 +86,34 @@ def handle_msg(data, addr):
         else:
             lock.acquire()
             data = process_transfer_request(addr[1], client_request[1], client_request[2]) #passes: <port, recv client, amnt>
-            print(data)
             lock.release()
     elif client_request[0] == "Balance" and len(client_request) > 1: #process a balance request
-        data = "$" + str(Blockchain.check_balance(client_request[1]))#requester 
-    # elif client_request[0] == "Balance": 
-    #    for client in active_clients:
-    #        print(client[active_clients])
-    #        data += client[active_clients] + ":" + str(Blockchain.check_balance(client[active_clients])) + " "
-    #    pass #imlement for other request that fail
+        data = "Balance: $" + str(Blockchain.check_balance(client_request[1]))#requester 
     else:
         pass
     #sends back message to console 
-    print(f"{addr[1]}: {data}", flush=True)
+    #print(f"{addr[1]}: {data}", flush=True)
     #bcast to all clients by iterating through stored connections
+    #print(addr)
     for sock in out_socks:
-        conn = sock[0]
-        recv_addr = sock[1]
+        #conn = sock[0]
+        #print(conn)
+        #recv_addr = sock[1]
         #echo message back to client
-        try:
-            #convert message into bytes and send through socket
-            conn.sendall(bytes(f"{addr[1]}: {data}", "utf-8"))
-            print(f"sent message to port {recv_addr[1]}", flush=True)
-            #handling exception in case trying to send data to a closed connection
-        except:
-            print(f"exception in sending port {recv_addr[1]}", flush=True)
-            continue
+        if addr[1] == sock[1][1]:
+            try:
+                #convert message into bytes and send through socket
+                conn = sock[0]
+                conn.sendall(bytes(f"{data}", "utf-8"))
+                #print(f"sent message to port {recv_addr[1]}", flush=True)
+                #handling exception in case trying to send data to a closed connection
+            except:
+                #print(f"exception in sending port {recv_addr[1]}", flush=True)
+                continue
    
 #handles a new connection by waiting to recieve from connection 
 def respond(conn, addr):
-    print(f"accepted connection from port: {addr[1]}", flush=True)
+    #print(f"accepted connection from port: {addr[1]}", flush=True)
     try:
         #wait to reveive new data, 1024 is receive buffer size
         client_id_data = conn.recv(1024) #may need to be smaller
@@ -133,7 +137,7 @@ def respond(conn, addr):
         if not data:
             #close own sock since client end closed
             conn.close()
-            print(f"connection closed from {addr[1]}", flush=True)
+            #print(f"connection closed from {addr[1]}", flush=True)
             break 
         #else we spawn a new thread to handle message sent from client
         #so the simulated network delay and message handling don't block receive
@@ -183,6 +187,12 @@ both server and client will need wait and sleep cmd functions
 
 add genesis block only when we add the first block
 can we print to console 
+
+
+
+genesis block contents?
+need has with the transaction 
+
 
 '''
 
