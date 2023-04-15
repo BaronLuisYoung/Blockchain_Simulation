@@ -55,6 +55,7 @@ def handle_msg(data):
     print(data)
 
 if __name__ == "__main__":
+    sleep(1)
     #specify servers socket address so client can connect to it 
     #client and server are just different processes on the same machine
     #server's IP is just local machine's IP
