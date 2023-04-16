@@ -16,7 +16,7 @@ def exit():
     out_sock.close()
     #flush console ouput buffer in case there are remaining prints
     stdout.flush()
-    os._exit()
+    os._exit(0)
 
 def get_user_input():
     #print("Please input user ID:")
@@ -59,7 +59,6 @@ if __name__ == "__main__":
     #specify servers socket address so client can connect to it 
     #client and server are just different processes on the same machine
     #server's IP is just local machine's IP
-    wait(int(sys.argv[1]))
     SERVER_IP = socket.gethostname()
     SERVER_PORT = 9000
 
@@ -96,7 +95,7 @@ if __name__ == "__main__":
         if not data:
             #close own socket since other end closed
             out_sock.close()
-            print("connection close from server")
+            #print("connection close from server")
             break
 
     #spawn a new thread to handle message 

@@ -25,7 +25,7 @@ def exit():
         sock[0].close()
     stdout.flush() #from sys lib
     #exit w/ status 0 
-    os._exit() #imported from os lib
+    os._exit(0) #imported from os lib
 
 def send_msg_to_client(port, data):
     try:
@@ -53,7 +53,7 @@ def get_user_input():
             Blockchain.print_chain()   
         elif user_input == "exit":
             exit()
-        elif user_input == "wait":
+        elif user_input.split()[0] == "wait":
             wait(int(user_input.split()[1]))
         elif user_input == "Balance":
             data = "" 
@@ -62,7 +62,7 @@ def get_user_input():
             print(data.strip()[:-1])
             #imlement for other request that fail
         else:
-            break
+            continue
 
 
 def init_client_id(client_id, port):
