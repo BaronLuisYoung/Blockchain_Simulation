@@ -59,7 +59,7 @@ def get_user_input():
             data = "" 
             for sock in out_socks:
                 data = data + active_clients[sock[1][1]] + ": $" + str(Blockchain.check_balance(active_clients[sock[1][1]])) + ", "
-            print(data.strip()[:-1])
+            print(data.strip()[:-1].strip())
             #imlement for other request that fail
         else:
             continue
@@ -93,7 +93,6 @@ def handle_msg(data, addr):
     #sends back message to console 
     #print(f"{addr[1]}: {data}", flush=True)
     #bcast to all clients by iterating through stored connections
-    #print(addr)
     for sock in out_socks:
         #conn = sock[0]
         #print(conn)
@@ -117,9 +116,9 @@ def respond(conn, addr):
         #wait to reveive new data, 1024 is receive buffer size
         client_id_data = conn.recv(1024) #may need to be smaller
     except:
-        #handle exception in case something happened to connection
-        #but it's not properly closed 
+        #handle exception in case something happened to connection but it's not properly closed 
         print(f"exception in user ID receving from {addr[1]}", flush=True)
+    
     init_client_id(client_id_data, addr[1])
     #infinite loop to keep waiting to receive new data from this client
     while True:

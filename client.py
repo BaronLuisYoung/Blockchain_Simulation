@@ -21,7 +21,7 @@ def exit():
 def get_user_input():
     #print("Please input user ID:")
     user_input_id = sys.argv
-    #wait(int(sys.argv[1]))
+    sleep(int(sys.argv[1]))
     user_input_id = "P" + user_input_id[1]
     try:
         #send user input string to server, converted into bytes
