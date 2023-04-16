@@ -2,10 +2,10 @@
 #client.py
 import socket 
 import threading 
-import re
-import sys
 
-from os import _exit
+import sys
+import os 
+
 from sys import stdout
 from time import sleep 
 
@@ -16,7 +16,7 @@ def exit():
     out_sock.close()
     #flush console ouput buffer in case there are remaining prints
     stdout.flush()
-    _exit(0)
+    os._exit()
 
 def get_user_input():
     #print("Please input user ID:")

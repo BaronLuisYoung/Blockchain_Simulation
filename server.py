@@ -4,7 +4,7 @@
 import socket 
 import threading
 
-from os import _exit 
+import os
 from sys import stdout
 from time import sleep
 from blockchain import *
@@ -25,7 +25,7 @@ def exit():
         sock[0].close()
     stdout.flush() #from sys lib
     #exit w/ status 0 
-    _exit(0) #imported from os lib
+    os._exit() #imported from os lib
 
 def send_msg_to_client(port, data):
     try:
