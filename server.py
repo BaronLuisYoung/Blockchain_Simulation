@@ -51,19 +51,24 @@ def get_user_input():
     while True:
         user_input = input()
         if user_input == "Blockchain":
-            print(Blockchain.print_chain(), flush=True)  
+            lock.acquire()
+            print(Blockchain.print_chain(), flush=True) 
+            lock.release() 
         elif user_input == "exit":
             exit()
         elif user_input.split()[0] == "wait":
             wait(int(user_input.split()[1]))
         elif user_input == "Balance":
+            lock.acquire()
             data = "" 
             for i in range(1,3,1):
                 data = data + "P" + str(i) + ": $" + str(Blockchain.check_balance("P" + str(i))) + ", "
             print(data.strip()[:-1].strip())
+            lock.release() 
             #imlement for other request that fail
         else:
             continue
+
 
 
 def init_client_id(client_id, port):
