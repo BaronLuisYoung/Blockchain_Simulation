@@ -58,8 +58,8 @@ def get_user_input():
             wait(int(user_input.split()[1]))
         elif user_input == "Balance":
             data = "" 
-            for sock in out_socks:
-                data = data + active_clients[sock[1][1]] + ": $" + str(Blockchain.check_balance(active_clients[sock[1][1]])) + ", "
+            for i in range(1,3,1):
+                data = data + "P" + str(i) + ": $" + str(Blockchain.check_balance("P" + str(i))) + ", "
             print(data.strip()[:-1].strip())
             #imlement for other request that fail
         else:
