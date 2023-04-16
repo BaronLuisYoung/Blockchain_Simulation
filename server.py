@@ -49,26 +49,23 @@ def process_transfer_request(port, recipient_id, amnt): #sender, recv, amnt
 
 def get_user_input():
     while True:
+        lock.acquire()
         user_input = input()
         if user_input == "Blockchain":
-            lock.acquire()
             print(Blockchain.print_chain(), flush=True) 
-            lock.release() 
         elif user_input == "exit":
             exit()
         elif user_input.split()[0] == "wait":
             wait(int(user_input.split()[1]))
         elif user_input == "Balance":
-            lock.acquire()
             data = "" 
             for i in range(1,3,1):
                 data = data + "P" + str(i) + ": $" + str(Blockchain.check_balance("P" + str(i))) + ", "
             print(data.strip()[:-1].strip())
-            lock.release() 
             #imlement for other request that fail
         else:
             continue
-
+        lock.release() 
 
 
 def init_client_id(client_id, port):
