@@ -49,6 +49,7 @@ def process_transfer_request(port, recipient_id, amnt): #sender, recv, amnt
 
 def get_user_input():
     while True:
+        lock.acquire()
         user_input = input()
         if user_input == "Blockchain":
             print(Blockchain.print_chain(), flush=True)  
@@ -75,7 +76,7 @@ def init_client_id(client_id, port):
 #simluates newtork delay then handles recieved message 
 def handle_msg(data, addr):
     #simulate 3 seconds message-passing delay
-    sleep(3)#imported from time library
+    #sleep(3)#imported from time library
     data = data.decode() #decode byte data into a string
 
     client_request = data.split() 
