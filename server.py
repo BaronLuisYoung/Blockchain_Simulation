@@ -40,7 +40,8 @@ def process_transfer_request(port, recipient_id, amnt): #sender, recv, amnt
     new_balance = Blockchain.check_transfer(active_clients[port], int(amnt[1:]))
     if new_balance != -1: 
         #create block and add it to chain
-        trans = (active_clients[port], recipient_id, amnt) # Trasaction of format <Sender, Reciever, amount>
+        #print(amnt[1:])
+        trans = (active_clients[port], recipient_id, amnt[1:]) # Trasaction of format <Sender, Reciever, amount>
         Blockchain.add_block(trans)
         return "Success"
     else:

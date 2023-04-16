@@ -41,17 +41,16 @@ class Blockchain:
         self.head = Block(self.head, trans)
 
     def check_transfer(self, client_id, trans_amt): #client_id is the sender
-        if self.head == None:
-           if 10 - trans_amt < 0:
-               return -1
+        if 10 - trans_amt < 0:
+            return -1
 
         balance = 10
         curr = self.head
         while curr is not None: 
             if curr.trans[0] == client_id: #if transaction is a loss
-                balance -= int(curr.trans[2][1]) #subtract from init balance 
+                balance -= int(curr.trans[2]) #subtract from init balance 
             elif curr.trans[1] == client_id: #if transaction is a gain 
-                balance += int(curr.trans[2][1])  #add to init balance 
+                balance += int(curr.trans[2])  #add to init balance 
             curr = curr.prev
     
         if (balance - trans_amt) < 0:
@@ -67,9 +66,9 @@ class Blockchain:
             return balance
         while curr is not None: 
             if curr.trans[0] == client_id: #if transaction is a loss
-                balance -= int(curr.trans[2][1]) #subtract form init balance 
+                balance -= int(curr.trans[2]) #subtract from init balance 
             elif curr.trans[1] == client_id: #if transaction is a gain 
-                balance += int(curr.trans[2][1])  #add to init balance 
+                balance += int(curr.trans[2])  #add to init balance 
             curr = curr.prev
         return balance
 
