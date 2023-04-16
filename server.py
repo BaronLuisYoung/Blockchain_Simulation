@@ -51,7 +51,7 @@ def get_user_input():
     while True:
         user_input = input()
         if user_input == "Blockchain":
-            Blockchain.print_chain()   
+            print(Blockchain.print_chain(), flush=True)  
         elif user_input == "exit":
             exit()
         elif user_input.split()[0] == "wait":
@@ -89,6 +89,8 @@ def handle_msg(data, addr):
             lock.release()
     elif client_request[0] == "Balance" and len(client_request) > 1: #process a balance request
         data = "Balance: $" + str(Blockchain.check_balance(client_request[1]))#requester 
+    elif client_request[0] == "Blockchain":
+        data = Blockchain.print_chain()
     else:
         pass
     #sends back message to console 

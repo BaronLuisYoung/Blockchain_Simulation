@@ -86,6 +86,6 @@ class Blockchain:
             chain_str = ""
             for x in reversed(chain):
                 chain_str = chain_str + x
-            print(("[" + chain_str.replace(")(" , "),(") + "]").replace(",", ", "), flush=True)
+            return ("[" + chain_str.replace(")(" , "),(") + "]").replace(",", ", ")
         
 #___________________________________________________________#
