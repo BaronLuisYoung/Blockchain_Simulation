@@ -2,32 +2,27 @@
 
 from hashlib import sha256
 from random import randint
+from time import sleep
 hash_func = lambda x: sha256(x.encode('utf-8')).hexdigest()
 #___________________BLOCK_CHAIN_CLASSES_____________________#
 
 #block to contain a hash ptr - H , transaction - T and nonce - N
 class Block:
-    def compute_hash(self, trans): 
+    def compute_hash(self, trans): #trans here is prev.trans
         computed_nonce = 0 
-        #print(trans)
-        # getto way to determine if first two bits are zero since only 0-3 have 00XX
-        while True:      
-            digest = hash_func(str(self.prev.hashed_prev_block) + (str(trans[0]) + str(trans[1]) + str(trans[2])) + str(computed_nonce))
+        while True:     
+            digest = hash_func(str(self.prev.hashed_prev_block) + (str(trans[0]) + str(trans[1]) + "$"+ str(trans[2])) + str(computed_nonce))
             #print(int(digest[0], 16))
             if int(digest[0], 16) <= 3:
-                return (digest, computed_nonce )
+                #print(self.prev.hashed_prev_block, str(trans[0]), str(trans[1]), str(trans[2]), str(computed_nonce))
+                return (digest, computed_nonce)
             computed_nonce = computed_nonce + 1 
-        
-
     def __init__(self, prev, trans):
-        #print(f"Building Block: {prev} and {trans}")
         if prev is None: #if genesis block
             self.prev = None
-            #pntr whatever we want 
             self.trans = trans 
             self.hashed_prev_block = '0'*64
-            self.nonce = '0'
-            #same nonce calculation 
+            self.nonce = '0' #nonce not needed for gen. blk
         else:
             self.prev = prev
             self.trans = trans 
@@ -40,52 +35,36 @@ class Blockchain:
     def add_block(self, trans):
         self.head = Block(self.head, trans)
 
-    def check_transfer(self, client_id, trans_amt): #client_id is the sender
-        if 10 - trans_amt < 0:
-            return -1
+    def check_balance(self, client_id, trans_amt): #client_id is the sender
+        balance = 10    
+        curr = self.head
+        while curr is not None: 
+            if curr.trans[0] == client_id:      #if loss
+                balance -= int(curr.trans[2])  
+            elif curr.trans[1] == client_id:    #if  gain 
+                balance += int(curr.trans[2])   
+            curr = curr.prev
 
-        balance = 10
-        curr = self.head
-        while curr is not None: 
-            if curr.trans[0] == client_id: #if transaction is a loss
-                balance -= int(curr.trans[2]) #subtract from init balance 
-            elif curr.trans[1] == client_id: #if transaction is a gain 
-                balance += int(curr.trans[2])  #add to init balance 
-            curr = curr.prev
-    
         if (balance - trans_amt) < 0:
-            #print(balance - trans_amt)
             return -1 
-        elif (balance + trans_amt) > 0: #calculate the new balance to the recv
-            return balance + trans_amt
-    
-    def check_balance(self, client_id):
-        curr = self.head
-        balance = 10
-        if curr == None:
-            return balance
-        while curr is not None: 
-            if curr.trans[0] == client_id: #if transaction is a loss
-                balance -= int(curr.trans[2]) #subtract from init balance 
-            elif curr.trans[1] == client_id: #if transaction is a gain 
-                balance += int(curr.trans[2])  #add to init balance 
-            curr = curr.prev
-        return balance
+        else:
+            return balance - trans_amt
 
     def print_chain(self):
-        #print("Transaction History:")
         curr = self.head
         if curr == None:
-            print("")
+            return "[]"
         else: 
+            #create chain list
             chain = []
             while curr is not None:
-                #print(str(curr.trans)[:-1])
-                chain.append(( "(" + curr.trans[0] + "," + curr.trans[1] + ","+ "$" +curr.trans[2] +  "," +curr.hashed_prev_block + ")"))
+                chain.append(( "(" + curr.trans[0] + "," + curr.trans[1] + ","+ "$" + curr.trans[2] +  "," + curr.hashed_prev_block + ")"))
                 curr = curr.prev
+            
+            #reverse chain list in chronological order 
             chain_str = ""
             for x in reversed(chain):
                 chain_str = chain_str + x
-            return ("[" + chain_str.replace(")(" , "),(") + "]").replace(",", ", ")
+            return ("[" + chain_str.replace(")(" , "),(") + "]").replace(",", ", ") #fix formatting 
         
 #___________________________________________________________#
