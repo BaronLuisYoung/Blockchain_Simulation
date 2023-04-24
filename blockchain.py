@@ -17,6 +17,7 @@ class Block:
                 #print(self.prev.hashed_prev_block, str(trans[0]), str(trans[1]), str(trans[2]), str(computed_nonce))
                 return (digest, computed_nonce)
             computed_nonce = computed_nonce + 1 
+
     def __init__(self, prev, trans):
         if prev is None: #if genesis block
             self.prev = None
@@ -38,6 +39,7 @@ class Blockchain:
     def check_balance(self, client_id, trans_amt): #client_id is the sender
         balance = 10    
         curr = self.head
+        
         while curr is not None: 
             if curr.trans[0] == client_id:      #if loss
                 balance -= int(curr.trans[2])  
