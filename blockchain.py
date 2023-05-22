@@ -8,6 +8,7 @@ hash_func = lambda x: sha256(x.encode('utf-8')).hexdigest()
 
 #block to contain a hash ptr - H , transaction - T and nonce - N
 class Block:
+    #CHANGE from linear to rand()
     def compute_hash(self, trans): #trans here is prev.trans
         computed_nonce = 0 
         while True:     
@@ -68,5 +69,5 @@ class Blockchain:
             for x in reversed(chain):
                 chain_str = chain_str + x
             return ("[" + chain_str.replace(")(" , "),(") + "]").replace(",", ", ") #fix formatting 
-        
+    
 #___________________________________________________________#

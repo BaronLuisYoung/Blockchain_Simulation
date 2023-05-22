@@ -14,7 +14,7 @@ out_socks = [] #container for all client connections
 active_clients = {} #[port] = id
 Blockchain = Blockchain() #locally defined block chain
 lock = threading.Lock() #lock used for adding block
-
+TIME_STAMP = 0
 #___________________________FOR SERVER CMDs___________________________________#
 def wait(t):
     sleep(t)
@@ -29,70 +29,70 @@ def exit():
 
 def send_msg_to_client(port, data):
     try:
-        port.sendall(bytes(f"{data}", "utf-8"))
+        port.sendall(bytes(data, "utf-8"))
+        print("Sent data to client")
     except:
         print(f"exception in sending port {port}", flush=True)
 
 def process_transfer_request(port, recipient_id, amnt): # T format: <Sender, Reciever-ID, amnt>
-    
+    global TIME_STAMP
     new_balance = Blockchain.check_balance(active_clients[port], int(amnt[1:])) #returns -1 if invalid 
    
     if new_balance != -1: 
-        trans = (active_clients[port], recipient_id, amnt[1:]) #(S-ID, R-ID, Amnt)
+        trans = (active_clients[port], recipient_id, amnt[1:], TIME_STAMP) #(S-ID, R-ID, Amnt, TS, )
         Blockchain.add_block(trans)
-        return "Success"
+        return "RELEASE SUCCESS"
     else:
-        return "Insufficient Balance"
+        return "RELEASE INCORRECT"
 
 def get_user_input():
     while True:
         user_input = input()
         #print(user_input)
         if user_input == "Blockchain":
-            #lock.acquire()
             chain_str = Blockchain.print_chain()
             print(chain_str)  
-            #lock.release()
         elif user_input == "exit":
             exit()
         elif user_input.split()[0] == "wait":
             wait(int(user_input.split()[1])) # gets time arg in cmd: 'wait x', x = time
         elif user_input == "Balance":
-            #lock.acquire()
             balance_str = "" 
             for i in range(1,4,1):
                 balance_str = balance_str + "P" + str(i) + ": $" + str(Blockchain.check_balance("P" + str(i), 0)) + ", "
             print(balance_str.strip()[:-1]) #removes last comma 
-            #lock.release()
         else:
             continue #ignore other inputs and continue
 
 def handle_msg(data, addr):
     data = data.decode() #decode byte data into a string
-
+    print(f"Data received: {data}")
+    
     client_request = data.split() 
-
     if client_request[0] == "Transfer": #process a transfer 
+        recv_time = int(client_request[3])
         if client_request[1] == active_clients[addr[1]]: #if user sends themselves money 
             #send back failed request
-            data = "Failed Request, client cannot send money to themselves."
+            data = "RELEASE Failed-Request"
         else:
-            #lock.acquire()
+            lock.acquire()
+            print("about to process transfer", flush=True)
             data = process_transfer_request(addr[1], client_request[1], client_request[2]) #passes: <port, recv client, amnt>
-            #lock.release()
+            lock.release()
     elif client_request[0] == "Balance": #process a balance request
-        #lock.acquire()
+        lock.acquire()
         data = "Balance: $" + str(Blockchain.check_balance(client_request[1], 0))
-        #lock.release()
+        lock.release()
     else:
+        
         return
         #invalid input send back nothing
 
     for sock in out_socks: #sends back message to console 
         if addr == sock[1]:
+            wait(3)
             send_msg_to_client(sock[0], data)
 
- 
 def respond(conn, addr):
     try:
         client_id_data = conn.recv(1024)
@@ -138,5 +138,3 @@ if __name__ == "__main__":
         out_socks.append((conn, addr))
         #thrd. for each client
         threading.Thread(target=respond, args=(conn,addr)).start()
-       
-    
