@@ -4,14 +4,12 @@
 # then broadcasts the message to all clients
 import socket
 import threading
-
-from os import _exit
 import os
-from time import sleep
-
 import sys
 from sys import stdout
-
+from time import sleep
+from blog import *
+from blockchain import *
 #___________________________FOR SERVER CMDs________________________#
 def wait(t):
     sleep(t)
@@ -65,8 +63,6 @@ def handle_recv_msg(conn):
 			print(f"connection closed", flush=True)
 			break
 
-
-
 def send_out_connections(i): #i is the other servers PID we want to connect to
 	out_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	while True:
@@ -75,7 +71,6 @@ def send_out_connections(i): #i is the other servers PID we want to connect to
 			print(f"sucess connection to server: {9000+i}")
 			PORTS[i] = out_sock
 			threading.Thread(target=handle_recv_msg, args=(out_sock,)).start()
-
 			break
 		except:
 			continue
@@ -83,24 +78,37 @@ def send_out_connections(i): #i is the other servers PID we want to connect to
 # def send_my_id(PID, conn):
 # 	out_socks.append((conn, addr))
 
+def begin_election():
+	BALLOT_NUM[0] +=1 
+	wait(3)
+	handle_send_msg(BALLOT_NUM)
+
+
 if __name__ == "__main__":
 	IP = socket.gethostname()
 	PID = int(sys.argv[1])
 	PORTS = {}
 	PORT = 9000 + PID
+	LOCAL_BLOG = Blog()
+	LOCAL_BLOCKCHAIN = Blockchain()
+	CURRENT_LEADER_ID = None
+	BALLOT_NUM = [0,PID]
+	ACCEPT_NUM = [0,0]
+	ACCEPT_VAL = None
 
 	in_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	in_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 	in_sock.bind((IP, PORT))
 	in_sock.listen()
 
-	#SET TO 4 for testing 
-	for i in range(1,4): #create a 'send' thread for each new connection 
+	for i in range(1,6): #create a 'send' thread for each new connection 
 		if i != PID:
 			threading.Thread(target=send_out_connections, args=(i,)).start()
 	
 	out_socks = []
 	threading.Thread(target=get_user_input).start()
+	if CURRENT_LEADER_ID == None:
+		threading.Thread(target=begin_election).start()
 	while True:
 		try:
 			conn, addr = in_sock.accept()
