@@ -6,11 +6,16 @@ import socket
 import threading
 import os
 import sys
+import ast
+
 from sys import stdout
 from time import sleep
 from blog import *
 from blockchain import *
 #___________________________FOR SERVER CMDs________________________#
+election_lock = threading.Lock()
+
+
 def wait(t):
     sleep(t)
 
@@ -20,6 +25,10 @@ def exit():
         sock[0].close()
     stdout.flush() 
     os._exit(0) 
+    
+#UTILITY 
+new_ballot_is_larger = lambda A, B: (int(A[0]) > int(B[0])) or (int(A[0]) == int(B[0]) and int(A[1]) > int(B[1]))
+
 #__________________________________________________________________#
 
 def get_user_input():
@@ -34,10 +43,8 @@ def get_user_input():
 		elif user_input_string == "Post":
 			#tbd
 			pass
-		elif user_input_string == "comment":
+		elif user_input_string == "Comment":
 			pass
-		elif user_input_string == "test":
-			handle_send_msg("test")
 
 def handle_send_msg(data):
 	for sock in out_socks: 
@@ -50,6 +57,9 @@ def handle_send_msg(data):
 			continue
 
 def handle_recv_msg(conn):
+	global CURRENT_LEADER_ID
+	global BALLOT_NUM
+	global QUORUM_COUNT
 	while True:
 		try:
 			data = conn.recv(1024).decode()
@@ -57,11 +67,50 @@ def handle_recv_msg(conn):
 		except:
 			print(f"exception in receiving", flush=True)
 			break
-		
+		if ast.literal_eval(data)[0] == "INIT_ID":
+			PORTS[i] = find_out_sock() 
 		if not data:
 			conn.close()
 			print(f"connection closed", flush=True)
 			break
+		
+		recv_tuple = ast.literal_eval(data)
+		recv_msg = recv_tuple[0]
+		print(recv_msg)
+		match recv_msg:
+			case "PREPARE":
+				recv_bal = recv_tuple[1]
+
+				election_lock.acquire()
+
+				if new_ballot_is_larger(recv_bal, BALLOT_NUM):
+					CURRENT_LEADER_ID = recv_bal[1]
+					BALLOT_NUM = recv_bal
+					print(PORTS[CURRENT_LEADER_ID])
+					print(out_socks)
+					print(conn)
+					try:
+						PORTS[CURRENT_LEADER_ID].sendall(bytes(("PROMISE"), "utf-8")) #send back to leader , BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL)
+						print(f"sent message to port", flush=True)
+					except:
+						print(f"exception in sending to port", flush=True)
+						continue
+
+				election_lock.release()
+
+			case "PROMISE":
+				election_lock.acquire()
+				QUORUM_COUNT +=1
+				election_lock.release()
+				print("test got here!!!")
+			case "ACCEPT":
+				print("test")
+			case "ACCEPTED":
+				print("test")
+			case "DECIDE":
+				print("test")
+			case _:
+				print("default-test")
 
 def send_out_connections(i): #i is the other servers PID we want to connect to
 	out_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -69,7 +118,6 @@ def send_out_connections(i): #i is the other servers PID we want to connect to
 		try:
 			out_sock.connect((IP, 9000+i))
 			print(f"sucess connection to server: {9000+i}")
-			PORTS[i] = out_sock
 			threading.Thread(target=handle_recv_msg, args=(out_sock,)).start()
 			break
 		except:
@@ -79,12 +127,17 @@ def send_out_connections(i): #i is the other servers PID we want to connect to
 # 	out_socks.append((conn, addr))
 
 def begin_election():
+	global CURRENT_LEADER_ID
+	global QUORUM_COUNT
+
 	BALLOT_NUM[0] +=1 
-	wait(3)
-	handle_send_msg(BALLOT_NUM)
+	while CURRENT_LEADER_ID == None or QUORUM_COUNT != 0:
+		handle_send_msg(("PREPARE", BALLOT_NUM))
+		wait(6)
 
 
 if __name__ == "__main__":
+	QUORUM_COUNT = 0
 	IP = socket.gethostname()
 	PID = int(sys.argv[1])
 	PORTS = {}
@@ -92,8 +145,8 @@ if __name__ == "__main__":
 	LOCAL_BLOG = Blog()
 	LOCAL_BLOCKCHAIN = Blockchain()
 	CURRENT_LEADER_ID = None
-	BALLOT_NUM = [0,PID]
-	ACCEPT_NUM = [0,0]
+	BALLOT_NUM = [0,PID] #<ballotNum, processID>
+	ACCEPT_NUM = [0,0] #<,>
 	ACCEPT_VAL = None
 
 	in_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -117,4 +170,10 @@ if __name__ == "__main__":
 			print("exception in accept", flush=True)
 			break
 		out_socks.append((conn, addr))
+		try:
+			conn.sendall(bytes(("INIT_ID" , PID), "utf-8")) #send back to leader , BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL)
+			print(f"sent ID message to port", flush=True)
+		except:
+			print(f"exception in sending ID msg to port", flush=True)
+			continue
 		
