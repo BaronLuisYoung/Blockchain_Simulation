@@ -14,7 +14,7 @@ from blog import *
 from blockchain import *
 #___________________________FOR SERVER CMDs________________________#
 election_lock = threading.Lock()
-
+connection_lock = threading.Lock()
 
 def wait(t):
     sleep(t)
@@ -32,6 +32,7 @@ new_ballot_is_larger = lambda A, B: (int(A[0]) > int(B[0])) or (int(A[0]) == int
 #__________________________________________________________________#
 
 def get_user_input():
+	global CURRENT_LEADER_ID
 	while True:
 		user_input_string = input()
 		print(f"cmd: {user_input_string}")
@@ -40,6 +41,8 @@ def get_user_input():
 		elif user_input_string == "connections":
 			for port in PORTS:
 				print(PORTS[port])
+		elif user_input_string == "leader":
+			print(CURRENT_LEADER_ID)
 		elif user_input_string == "Post":
 			#tbd
 			pass
@@ -56,6 +59,15 @@ def handle_send_msg(data):
 			print(f"exception in sending to port", flush=True)
 			continue
 
+def send_to_leader(my_tuple):
+	try:
+		data = str(my_tuple).encode()
+		PORTS[CURRENT_LEADER_ID + 9000].sendall(data) #send back to leader , BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL)
+		print(f"sent message to port", flush=True)
+	except:
+		print(f"exception in sending to port", flush=True)
+
+
 def handle_recv_msg(conn):
 	global CURRENT_LEADER_ID
 	global BALLOT_NUM
@@ -64,19 +76,17 @@ def handle_recv_msg(conn):
 		try:
 			data = conn.recv(1024).decode()
 			print(f"data: {data}")
+			recv_tuple = ast.literal_eval(data)
 		except:
 			print(f"exception in receiving", flush=True)
 			break
-		if ast.literal_eval(data)[0] == "INIT_ID":
-			PORTS[i] = find_out_sock() 
+
 		if not data:
 			conn.close()
 			print(f"connection closed", flush=True)
 			break
 		
-		recv_tuple = ast.literal_eval(data)
 		recv_msg = recv_tuple[0]
-		print(recv_msg)
 		match recv_msg:
 			case "PREPARE":
 				recv_bal = recv_tuple[1]
@@ -85,16 +95,8 @@ def handle_recv_msg(conn):
 
 				if new_ballot_is_larger(recv_bal, BALLOT_NUM):
 					CURRENT_LEADER_ID = recv_bal[1]
-					BALLOT_NUM = recv_bal
-					print(PORTS[CURRENT_LEADER_ID])
-					print(out_socks)
-					print(conn)
-					try:
-						PORTS[CURRENT_LEADER_ID].sendall(bytes(("PROMISE"), "utf-8")) #send back to leader , BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL)
-						print(f"sent message to port", flush=True)
-					except:
-						print(f"exception in sending to port", flush=True)
-						continue
+					BALLOT_NUM = recv_bal			
+					send_to_leader(("PROMISE", BALLOT_NUM))
 
 				election_lock.release()
 
@@ -113,11 +115,27 @@ def handle_recv_msg(conn):
 				print("default-test")
 
 def send_out_connections(i): #i is the other servers PID we want to connect to
+	global out_socks
+	global PORTS
 	out_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	while True:
 		try:
 			out_sock.connect((IP, 9000+i))
 			print(f"sucess connection to server: {9000+i}")
+			
+			wait(2)
+			
+			remote_sock = out_socks[-1][0]
+			
+			raddr_ = remote_sock.getpeername()[1]
+			raddr = out_sock.getpeername()[1] #(1,2)
+
+			PORTS[raddr] = remote_sock
+
+			#print(PORTS)
+			# print(laddr_, raddr_ )
+			# print(laddr, raddr)
+
 			threading.Thread(target=handle_recv_msg, args=(out_sock,)).start()
 			break
 		except:
@@ -131,9 +149,10 @@ def begin_election():
 	global QUORUM_COUNT
 
 	BALLOT_NUM[0] +=1 
-	while CURRENT_LEADER_ID == None or QUORUM_COUNT != 0:
+	while CURRENT_LEADER_ID == None and QUORUM_COUNT != 2:
 		handle_send_msg(("PREPARE", BALLOT_NUM))
 		wait(6)
+	CURRENT_LEADER_ID = PID
 
 
 if __name__ == "__main__":
@@ -154,7 +173,7 @@ if __name__ == "__main__":
 	in_sock.bind((IP, PORT))
 	in_sock.listen()
 
-	for i in range(1,6): #create a 'send' thread for each new connection 
+	for i in range(1,5): #create a 'send' thread for each new connection 
 		if i != PID:
 			threading.Thread(target=send_out_connections, args=(i,)).start()
 	
@@ -169,11 +188,8 @@ if __name__ == "__main__":
 		except:
 			print("exception in accept", flush=True)
 			break
+	
 		out_socks.append((conn, addr))
-		try:
-			conn.sendall(bytes(("INIT_ID" , PID), "utf-8")) #send back to leader , BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL)
-			print(f"sent ID message to port", flush=True)
-		except:
-			print(f"exception in sending ID msg to port", flush=True)
-			continue
+
+
 		
