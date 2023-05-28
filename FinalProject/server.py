@@ -43,13 +43,11 @@ def get_user_input():
 	global out_socks
 	while True:
 		user_input_string = input()
-		print(f"cmd: {user_input_string}")
 		if user_input_string == "exit":
 			exit()
 		elif user_input_string == "ports":
 			for port in PORTS:
 				print(PORTS[port].getpeername()[1])
-			print("In sock:", in_sock.getsockname()[1])
 		elif user_input_string == "outsocks":
 			print(out_socks)
 		elif user_input_string == "leader":
@@ -57,13 +55,16 @@ def get_user_input():
 		elif user_input_string == "qcount":
 			print(QUORUM_COUNT)
 		elif user_input_string == "Post":
-			#tbd
+			if CURRENT_LEADER_ID == None:
+				begin_election()
 			pass
 		elif user_input_string == "Comment":
+			if CURRENT_LEADER_ID == None:
+				begin_election()
 			pass
 
 def handle_bcast_msg(data):
-	print("Bcasting to all")
+	print(f"Bcasting to all: {data}")
 	for sock in out_socks: 
 		wait(2)
 		conn = sock[0]
@@ -73,11 +74,11 @@ def handle_bcast_msg(data):
 			print(f"exception in sending to port", flush=True)
 			continue
 
-def send_to_leader(my_tuple):
+def send_to_server(my_tuple, PID):
 	try:
 		data = str(my_tuple).encode()
-		PORTS[CURRENT_LEADER_ID + 9000].sendall(data) #send back to leader , BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL)
-		print(f"sent to leader",my_tuple, flush=True)
+		PORTS[PID + 9000].sendall(data) #send back to leader , BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL)
+		print(f"sent to server: {my_tuple}\n")
 	except:
 		print(f"exception in sending to leader", flush=True)
 
@@ -89,6 +90,7 @@ def handle_recv_msg(conn):
 	global out_socks 
 	global MY_PORT
 	global PORTS
+	global MY_PID
 	while True:
 		recv_tuple = None
 		if requests_q.empty():
@@ -111,21 +113,21 @@ def handle_recv_msg(conn):
 				recv_request = ast.literal_eval(request)
 				requests_q.put(recv_request)
 			recv_tuple = requests_q.get()
-
 		else:
 			recv_tuple = requests_q.get()
 		
+		print(f"message recieved: {recv_tuple}\n")
 		recv_msg = recv_tuple[0]
 		match recv_msg:
 			case "INIT_ID":
-				print(recv_tuple)
 				my_tuple = ("INIT_ACK", MY_PORT, recv_tuple[2])
 				handle_bcast_msg(my_tuple)
 			case "INIT_ACK":
-				print(recv_tuple)
 				for sock in out_socks:
 					if sock[0].getpeername()[1] == recv_tuple[2]:
 						PORTS[recv_tuple[1]] = sock[0]
+			case "QUELL":
+				CURRENT_LEADER_ID = recv_tuple[1]
 			case "PREPARE":
 				recv_bal = recv_tuple[1]
 
@@ -133,17 +135,20 @@ def handle_recv_msg(conn):
 
 				if new_ballot_is_larger(recv_bal, BALLOT_NUM):
 					CURRENT_LEADER_ID = recv_bal[1]
+					print(f"NEW LEADER: {CURRENT_LEADER_ID}")
 					BALLOT_NUM = recv_bal	
 					wait(2)		
-					send_to_leader(("PROMISE", BALLOT_NUM))
+					send_to_server(("PROMISE", BALLOT_NUM), CURRENT_LEADER_ID)
 
 				election_lock.release()
+
 			case "PROMISE":
-				print("PROM tst")
-				print(recv_tuple)
 				election_lock.acquire()
 				QUORUM_COUNT +=1
 				election_lock.release()
+				if QUORUM_COUNT >= 2 and MY_PID != CURRENT_LEADER_ID:
+					print("ELECTED")
+					CURRENT_LEADER_ID = MY_PID
 				
 			case "ACCEPT":
 				print("test")
@@ -155,40 +160,41 @@ def handle_recv_msg(conn):
 				print("default-test")
 
 def send_out_connections(i):
+	global CURRENT_LEADER_ID
 	out_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	while True:
 		try:
 			out_sock.connect((IP, 9000+i))
-			print(f"sucess, connection to server: {9000+i}")
+			print(f"sucess, connection sent to server: {9000+i}")
 			threading.Thread(target=handle_recv_msg, args=(out_sock,)).start()
+			#if CURRENT_LEADER_ID == None and len(out_socks) >= 2:
+				#threading.Thread(target=begin_election).start()
+
 			break
 		except:
 			continue
 
 def begin_election():
+	print("Beginning Election\n")
 	global CURRENT_LEADER_ID
 	global QUORUM_COUNT
+	global MAX_QUORUM
 	global out_socks
 
 	BALLOT_NUM[0] +=1 
-
-	with condition:
-		while len(out_socks) != 2:
-			condition.wait()
-	wait(3)
 	handle_bcast_msg(("PREPARE", BALLOT_NUM))
 
-
 if __name__ == "__main__":
+	MAX_QUORUM = 2
 	QUORUM_COUNT = 0
 	IP = socket.gethostname()
-	PID = int(sys.argv[1])
+	MY_PID = int(sys.argv[1])
 	PORTS = {}
-	MY_PORT = 9000 + PID
+	MY_PORT = 9000 + MY_PID
 	LOCAL_BLOG = Blog()
 	LOCAL_BLOCKCHAIN = Blockchain()
 	CURRENT_LEADER_ID = None
-	BALLOT_NUM = [0,PID] #<ballotNum, processID>
+	BALLOT_NUM = [0, MY_PID] #<ballotNum, processID>
 	ACCEPT_NUM = [0,0] #<,>
 	ACCEPT_VAL = None
 
@@ -197,21 +203,21 @@ if __name__ == "__main__":
 	in_sock.bind((IP, MY_PORT))
 	in_sock.listen()
 
-	for i in range(1,5): #create a 'send' thread for each new connection 
-		if i != PID:
+	for i in range(1,6): #create a 'send' thread for each new connection 
+		if i != MY_PID:
 			threading.Thread(target=send_out_connections, args=(i,)).start()
 	
 	out_socks = []
 
 	threading.Thread(target=get_user_input).start()
 
-	if CURRENT_LEADER_ID == None:
-		threading.Thread(target=begin_election).start()
+	#if CURRENT_LEADER_ID == None:
+		#threading.Thread(target=begin_election).start()
 
 	while True:
 		try:
 			conn, addr = in_sock.accept()
-			print(f"connected to other server: {addr}")
+			print(f"sucess, connection recieved by server: {addr}\n")
 		except:
 			print("exception in accept", flush=True)
 			break
@@ -227,7 +233,3 @@ if __name__ == "__main__":
 		except:
 			print(f"exception in sending INIT_ID to port", flush=True)
 			continue
-
-		if len(out_socks) == 2:
-			with condition:
-				condition.notify()
