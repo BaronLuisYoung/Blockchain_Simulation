@@ -28,10 +28,13 @@ class Blog: ##[TODO] Testing of class usage and link with Blockchain
             print("Cannot create comment. The post doesn't exist.")
 
     def view_all_posts(self):
-        sorted_posts = sorted(self.posts, key=lambda x: x['timestamp'])
-        for post in sorted_posts:
+        #sorted_posts = sorted(self.posts, key=lambda x: x['timestamp'])
+        for post in self.posts:
+            print("-----")
             print(f"Title: {post['title']}")
             print(f"Author: {post['author']}")
+            print(f"Content: {post['content']}")
+        print("-----")
             
 
     def view_user_posts(self, username):
