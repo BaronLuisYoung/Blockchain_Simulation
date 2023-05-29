@@ -19,10 +19,12 @@ election_lock = threading.Lock()
 connection_lock = threading.Lock()
 connection_cond = threading.Condition(connection_lock)
 request_lock = threading.Lock()
-request_cond = threading.Condition(request_lock)
-
+request_cond = threading.Condition()
+print_lock = threading.Lock()
 user_input_lock = threading.Lock()
 user_input_cond = threading.Condition(user_input_lock)
+processing_cond = threading.Condition()
+block_lock = threading.Lock()
 
 def wait(t):
     sleep(t)
@@ -36,45 +38,47 @@ def exit():
 	os._exit(0) 
     
 #UTILITY 
-new_ballot_is_larger = lambda A, B: (int(A[0]) > int(B[0])) or (int(A[0]) == int(B[0]) and int(A[1]) > int(B[1]))
+new_ballot_is_larger_or_eq = lambda A, B: (int(A[0]) > int(B[0])) or (int(A[0]) == int(B[0]) and int(A[1]) > int(B[1]))
 
 LOCAL_BLOG = Blog()
 LOCAL_BLOCKCHAIN = Blockchain()
+
 user_requests_q = Queue()
-out_socks = [None] * 5
+msg_requests_q = Queue()
+
+out_socks = [None] * 6
 RECV_VALS = []
+user_data = None
+accept_count = 0
 #__________________________________________________________________#
 def handle_user_request():
 	global user_requests_q
 	global LOCAL_BLOG
 	global LOCAL_BLOCKCHAIN
 	global ACCEPT_VAL
+	global user_data 
+
 	while True:
 		with request_cond:
-
 			while user_requests_q.empty():
 				request_cond.wait()
 
-			data = user_requests_q.get()
-			print(data)
+			# if user_data != None:
+			# 	with processing_cond:
+			# 		processing_cond.wait() #released once completed
+			# else:			
+			user_data = user_requests_q.queue[0]
 
-			request_type = data[0]
+			request_type = user_data[0]
+
 			if request_type == "post":
-				print("newest post")
-				# username = data[1]
-				# title = data[2]
-				# content = data[3]
+				#print("post-start")
 				with user_input_cond:
-					ACCEPT_VAL[0] = data[1]
-					ACCEPT_VAL[1] = data[2] 
-					ACCEPT_VAL[2] = data[3]
+					ACCEPT_VAL[0] = user_data[1] # username = data[1]
+					ACCEPT_VAL[1] = user_data[2] # title = data[2]
+					ACCEPT_VAL[2] = user_data[3]	# content = data[3]
 					user_input_cond.notify()
-					
-				print("userinput",ACCEPT_VAL, flush=True)
-				# LOCAL_BLOG.make_new_post(username,title,content)
-				# LOCAL_BLOCKCHAIN.add_block(str(data))
-
-
+			
 			elif request_type == "comment":
 				pass
 			elif request_type == "blog":
@@ -83,9 +87,9 @@ def handle_user_request():
 				pass
 			elif request_type == "read":
 				pass
-			request_cond.notify()
 		
 def get_user_input():
+
 	global CURRENT_LEADER_ID
 	global out_socks
 	global user_requests_q
@@ -126,8 +130,9 @@ def get_user_input():
 
 def handle_bcast_msg(data):
 	global out_socks
+	wait(3)
+
 	print(f"Bcasting to all: {data}")
-	#print(out_socks)
 	for sock in out_socks: 
 		if sock != None:
 			try:
@@ -143,16 +148,103 @@ def send_to_server(my_tuple, PID):
 	try:
 		data = str(my_tuple).encode()
 		out_socks[PID].sendall(data) #send back to leader , BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL)
-		print(f"sent to server: {my_tuple}")
+		print(f"sent to server {9000+PID}: {my_tuple}")
 	except:
 		exc_type = sys.exc_info()[0]
 		print("Exception type:", exc_type)
 		print(f"exception in sending to leader", flush=True)
 
-def handle_recv_msg(conn):
-	msg_requests_q = Queue()
-	global CURRENT_LEADER_ID, BALLOT_NUM, QUORUM_COUNT, out_socks 
+
+def handle_request_type(recv_tuple):
+	global msg_requests_q, user_requests_q, out_socks 
+	global CURRENT_LEADER_ID, BALLOT_NUM, QUORUM_COUNT
 	global PORTS, ACCEPT_VAL, ACCEPT_NUM, RECV_VALS
+	global accept_count, myVal, processing_cond, user_data
+	flag2 = flag1 = True
+	recv_msg = recv_tuple[0]
+
+	match recv_msg:
+			case "PREPARE":
+				recv_bal = recv_tuple[1]
+				election_lock.acquire()
+
+				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM):
+					CURRENT_LEADER_ID = recv_bal[1]
+					print(f"NEW LEADER: {CURRENT_LEADER_ID}")
+					wait(2)		
+					send_to_server(("PROMISE", BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL), CURRENT_LEADER_ID)
+
+				election_lock.release()
+
+			case "PROMISE":
+
+				with election_lock:  #each thrd the recv adds to count and appends their promise
+					QUORUM_COUNT +=1
+					RECV_VALS.append(recv_tuple)
+					
+					if QUORUM_COUNT < 2: #they simply return if havent reached quorum
+							return
+
+					if QUORUM_COUNT >= 2 and MY_PID != CURRENT_LEADER_ID and flag1:
+						flag1 = False
+						print("ELECTED")
+						CURRENT_LEADER_ID = MY_PID
+					else:
+						return
+					
+				with user_input_cond:   
+					user_input_cond.wait()
+					for val in RECV_VALS:
+						if val[3][0] != None:
+							myVal = val[3]
+							continue
+					#myVal = received val with highest b 
+					myVal = max(RECV_VALS, key=lambda x: (x[1][0], x[1][1]))[3] #sort by acceptNum (bval)
+					RECV_VALS = []
+					QUORUM_COUNT = 0
+					flag1 = True
+				handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
+
+			case "ACCEPT":
+				recv_bal = recv_tuple[1]
+				#print(recv_bal, BALLOT_NUM)
+				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM):
+					ACCEPT_NUM = recv_tuple[1] #AcceptNum <- b (BallotNum)
+					ACCEPT_VAL = recv_tuple[2] #AcceptVal <- V (myVal)
+					send_to_server(("ACCEPTED", recv_tuple[1], recv_tuple[2]), CURRENT_LEADER_ID)
+
+			case "ACCEPTED":
+				with block_lock:
+					accept_count +=1
+					if accept_count < MAX_QUORUM:
+						return
+
+				if accept_count >= MAX_QUORUM and flag2:
+					flag2 = False
+					with block_lock:
+						LOCAL_BLOG.make_new_post(ACCEPT_VAL[0], ACCEPT_VAL[1], ACCEPT_VAL[2])
+						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
+						completed_request = user_requests_q.get()
+						#processing_cond.notify()
+						print("Request completed:", completed_request)
+						user_data = None
+						accept_count = 0
+						flag2 = True
+				else:
+					return
+				handle_bcast_msg(("DECIDE", BALLOT_NUM, ACCEPT_VAL))
+
+			case "DECIDE":
+				with block_lock:
+						LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
+						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
+						print("DECIDED:", recv_tuple[2])
+			case _:
+				print("default-test")
+
+
+def handle_recv_msg(conn):
+	global msg_requests_q, out_socks 
 	while True:
 		if msg_requests_q.empty():
 			try:
@@ -173,67 +265,17 @@ def handle_recv_msg(conn):
 			for request in data_list:
 				recv_request = ast.literal_eval(request)
 				msg_requests_q.put(recv_request)
-			recv_tuple = msg_requests_q.get()
+			recv_tuple = msg_requests_q.get() #DEQUE WHEN WE HAVE DECIED
 		else:
 			recv_tuple = msg_requests_q.get()
 		
+		# with print_lock:
+		# 	print(f"Message recieved: {recv_tuple}")
+		handle_request_type(recv_tuple)
 
-		print(f"message recieved: {recv_tuple}")
+		
 
-		recv_msg = recv_tuple[0]
-		match recv_msg:
-			case "PREPARE":
-				recv_bal = recv_tuple[1]
-				election_lock.acquire()
-
-				if new_ballot_is_larger(recv_bal, BALLOT_NUM):
-					CURRENT_LEADER_ID = recv_bal[1]
-					print(f"NEW LEADER: {CURRENT_LEADER_ID}")
-					BALLOT_NUM = recv_bal	
-					wait(2)		
-					send_to_server(("PROMISE", BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL), CURRENT_LEADER_ID)
-
-				election_lock.release()
-
-			case "PROMISE":
-				election_lock.acquire()
-				QUORUM_COUNT +=1
-				RECV_VALS.append(recv_tuple)
-				election_lock.release()
-
-				if QUORUM_COUNT >= 2 and MY_PID != CURRENT_LEADER_ID:
-					print("ELECTED")
-					CURRENT_LEADER_ID = MY_PID
-					RECV_VALS = sorted(RECV_VALS, key=lambda x: x[2], reverse=True) #sort by acceptNum (bval)
-					
-					with user_input_cond:
-						user_input_cond.wait()
-						print("from here", ACCEPT_VAL, flush= True)
-						print("REC", RECV_VALS)
-						for val in RECV_VALS:
-							if val[3][0] != None:
-								
-								print("GOTMEEE", flush=True)
-								ACCEPT_VAL = val[3]
-								break
-						
-						LOCAL_BLOG.make_new_post(ACCEPT_VAL[0], ACCEPT_VAL[1], ACCEPT_VAL[2])
-						LOCAL_BLOCKCHAIN.add_block(str(data))
-
-
-					
-
-
-	
-				
-			case "ACCEPT":
-				print("test")
-			case "ACCEPTED":
-				print("test")
-			case "DECIDE":
-				print("test")
-			case _:
-				print("default-test")
+		
 
 def send_out_connections(i):
 	global CURRENT_LEADER_ID
