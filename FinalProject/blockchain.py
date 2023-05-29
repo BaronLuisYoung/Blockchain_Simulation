@@ -38,7 +38,6 @@ class Blockchain:
         self.head = Block(self.head, user_operation)
 
     def print_chain(self):
-        print("urmom")
         curr = self.head
         if curr == None:
             return "[]"

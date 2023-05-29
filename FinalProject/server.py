@@ -3,6 +3,7 @@
 # it echoes any message received from any client to console
 # then broadcasts the message to all clients
 import socket
+from threading import *
 import threading
 import os
 import sys
@@ -23,7 +24,10 @@ request_cond = threading.Condition()
 print_lock = threading.Lock()
 user_input_lock = threading.Lock()
 user_input_cond = threading.Condition(user_input_lock)
-processing_cond = threading.Condition()
+
+
+processing_cond = Condition()
+
 block_lock = threading.Lock()
 
 def wait(t):
@@ -40,6 +44,13 @@ def exit():
 #UTILITY 
 new_ballot_is_larger_or_eq = lambda A, B: (int(A[0]) > int(B[0])) or (int(A[0]) == int(B[0]) and int(A[1]) > int(B[1]))
 
+def check_user_input(user_input_string):
+	valid_strings = ["post", "comment", "blog", "view", "read"]
+	result = user_input_string in valid_strings
+	if not result:
+		print("INVALID INPUT")
+	return result
+    
 LOCAL_BLOG = Blog()
 LOCAL_BLOCKCHAIN = Blockchain()
 
@@ -48,37 +59,47 @@ msg_requests_q = Queue()
 
 out_socks = [None] * 6
 RECV_VALS = []
-user_data = None
+curr_curr_user_data = completed_request = None
 accept_count = 0
 #__________________________________________________________________#
-def handle_user_request():
+def handle_user_request(): #handles all user rquests for replication
 	global user_requests_q
 	global LOCAL_BLOG
 	global LOCAL_BLOCKCHAIN
 	global ACCEPT_VAL
-	global user_data 
+	global curr_user_data, completed_request
 
-	while True:
+	while True: 
 		with request_cond:
 			while user_requests_q.empty():
+				print("No user request received ...", flush=True)
 				request_cond.wait()
+				print("User request queue has data, thread awake!", flush=True)
 
-			# if user_data != None:
-			# 	with processing_cond:
-			# 		processing_cond.wait() #released once completed
-			# else:			
-			user_data = user_requests_q.queue[0]
 
-			request_type = user_data[0]
+			processing_cond.acquire()
+			curr_user_data = user_requests_q.queue[0]
+			print(f"Current process, curr_curr_user_data:{curr_user_data}", flush=True)
+
+			request_type = curr_user_data[0]
 
 			if request_type == "post":
 				#print("post-start")
 				with user_input_cond:
-					ACCEPT_VAL[0] = user_data[1] # username = data[1]
-					ACCEPT_VAL[1] = user_data[2] # title = data[2]
-					ACCEPT_VAL[2] = user_data[3]	# content = data[3]
+					ACCEPT_VAL[0] = curr_user_data[1] # username = data[1]
+					ACCEPT_VAL[1] = curr_user_data[2] # title = data[2]
+					ACCEPT_VAL[2] = curr_user_data[3]	# content = data[3]	
 					user_input_cond.notify()
-			
+					print("user_input_cond notified", flush=True)
+				
+				while(completed_request == None):
+					print("waiting on process to finish (processing_cond.wait)), thread waiting ...", flush=True)
+					processing_cond.wait()
+
+				print("(processing_cond.wait() notified, thread awake in handle_user_request", flush=True)
+				processing_cond.release()
+				print("process finished (processing_lock.release()), thread awake, lock released!", flush=True)
+
 			elif request_type == "comment":
 				pass
 			elif request_type == "blog":
@@ -87,6 +108,9 @@ def handle_user_request():
 				pass
 			elif request_type == "read":
 				pass
+			print("(processing_cond.wait() notified, thread awake in recv_msg", flush=True)
+
+			request_cond.notify()
 		
 def get_user_input():
 
@@ -117,16 +141,27 @@ def get_user_input():
 			LOCAL_BLOG.view_all_posts()
 		elif user_input_string == "blockchain":
 			LOCAL_BLOCKCHAIN.print_chain()
-		else:
+		else: #making a post or comment
 			if CURRENT_LEADER_ID == None:
+				if check_user_input(user_input_string) == False:
+					continue
+				else:
 					begin_election()
-					wait(5)
+					wait(3)
 
 			with request_cond:
 				while user_requests_q.full():
+					print("User request queue full thread waiting ...", flush=True)
 					request_cond.wait()
-				user_requests_q.put(data)
-				request_cond.notify()
+					print("User request queue has room, thread awake!", flush=True)
+
+				if check_user_input(user_input_string):
+					user_requests_q.put(data)
+					print("User request placed in queue!", flush=True)
+					request_cond.notify()
+					print("Notifying request handler.", flush=True)
+
+
 
 def handle_bcast_msg(data):
 	global out_socks
@@ -159,7 +194,7 @@ def handle_request_type(recv_tuple):
 	global msg_requests_q, user_requests_q, out_socks 
 	global CURRENT_LEADER_ID, BALLOT_NUM, QUORUM_COUNT
 	global PORTS, ACCEPT_VAL, ACCEPT_NUM, RECV_VALS
-	global accept_count, myVal, processing_cond, user_data
+	global accept_count, myVal, curr_user_data
 	flag2 = flag1 = True
 	recv_msg = recv_tuple[0]
 
@@ -180,7 +215,7 @@ def handle_request_type(recv_tuple):
 
 				with election_lock:  #each thrd the recv adds to count and appends their promise
 					QUORUM_COUNT +=1
-					RECV_VALS.append(recv_tuple)
+					RECV_VALS.append(recv_tuple) # 
 					
 					if QUORUM_COUNT < 2: #they simply return if havent reached quorum
 							return
@@ -192,15 +227,26 @@ def handle_request_type(recv_tuple):
 					else:
 						return
 					
-				with user_input_cond:   
+				with user_input_cond:
+					print("waiting on user_input_cond, thread waiting ...", flush=True)   
 					user_input_cond.wait()
-					for val in RECV_VALS:
-						if val[3][0] != None:
-							myVal = val[3]
-							continue
-					#myVal = received val with highest b 
-					myVal = max(RECV_VALS, key=lambda x: (x[1][0], x[1][1]))[3] #sort by acceptNum (bval)
+					print("user_input has data, thread awake ...", flush=True)  
+					print(RECV_VALS)
+
+					temp_vals = []
+					for vals in RECV_VALS:
+						temp_vals.append(vals[3][0])
+
+					print("from tempvals",temp_vals)
+					if  all(element is None for element in temp_vals):
+						myVal = ACCEPT_VAL
+						print("from promise here", myVal)
+
+					else:	#myVal = received val with highest b 
+						myVal = max(RECV_VALS, key=lambda x: (x[1][0], x[1][1]))[3] #sort by acceptNum (bval)
+					print("from promise", myVal)
 					RECV_VALS = []
+					temp_vals = []
 					QUORUM_COUNT = 0
 					flag1 = True
 				handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
@@ -208,6 +254,7 @@ def handle_request_type(recv_tuple):
 			case "ACCEPT":
 				recv_bal = recv_tuple[1]
 				#print(recv_bal, BALLOT_NUM)
+				print("from recv ACCEPT", recv_tuple)
 				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM):
 					ACCEPT_NUM = recv_tuple[1] #AcceptNum <- b (BallotNum)
 					ACCEPT_VAL = recv_tuple[2] #AcceptVal <- V (myVal)
@@ -220,18 +267,23 @@ def handle_request_type(recv_tuple):
 						return
 
 				if accept_count >= MAX_QUORUM and flag2:
+					print("ACCEPTED MAJORITY RECIEVED", flush=True)
 					flag2 = False
 					with block_lock:
 						LOCAL_BLOG.make_new_post(ACCEPT_VAL[0], ACCEPT_VAL[1], ACCEPT_VAL[2])
 						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
 						completed_request = user_requests_q.get()
-						#processing_cond.notify()
-						print("Request completed:", completed_request)
-						user_data = None
+						print("Request completed:", completed_request, flush=True)
+						curr_user_data = None
 						accept_count = 0
 						flag2 = True
+						with processing_cond:
+							processing_cond.notify()
+							print("thread notified in handle_user_request")
+
 				else:
 					return
+				
 				handle_bcast_msg(("DECIDE", BALLOT_NUM, ACCEPT_VAL))
 
 			case "DECIDE":
