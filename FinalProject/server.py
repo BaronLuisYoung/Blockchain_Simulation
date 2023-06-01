@@ -63,7 +63,7 @@ curr_curr_user_data = completed_request = None
 accept_count = 0
 #__________________________________________________________________#
 def handle_user_request(): #handles all user rquests for replication
-	global LOCAL_BLOG, LOCAL_BLOCKCHAIN, ACCEPT_VAL, CURRENT_LEADER_ID
+	global LOCAL_BLOG, LOCAL_BLOCKCHAIN, ACCEPT_VAL, CURRENT_LEADER_ID, BALLOT_NUM
 	global user_requests_q, curr_user_data, completed_request
 
 	while True: 
@@ -87,15 +87,15 @@ def handle_user_request(): #handles all user rquests for replication
 
 			if request_type == "post":
 				with user_input_cond:
-					print("user_input_cond: post-start")
+					#print("user_input_cond: post-start")
 					ACCEPT_VAL[0] = curr_user_data[1] # username = data[1]
 					ACCEPT_VAL[1] = curr_user_data[2] # title = data[2]
 					ACCEPT_VAL[2] = curr_user_data[3]	# content = data[3]	
 					user_input_cond.notify()
-					print("user_input_cond notified", flush=True)
+					#print("user_input_cond notified", flush=True)
 				
 				if CURRENT_LEADER_ID != None:
-					print("TESTING")
+					BALLOT_NUM[0] += 1
 					handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 
 
@@ -134,6 +134,10 @@ def get_user_input():
 		user_input_string = data[0]
 		if user_input_string == "exit":
 			exit()
+		elif user_input_string == "ballotnum":
+				print(BALLOT_NUM)
+		elif user_input_string == "queue":
+			print(list(user_requests_q.queue))
 		elif user_input_string == "ports":
 			for port in PORTS:
 				print(PORTS[port].getpeername()[1])
@@ -153,9 +157,9 @@ def get_user_input():
 		elif check_user_input(user_input_string) == True:
 			with request_cond:
 				user_requests_q.put(data)
-				print("User request placed in queue!", flush=True)
+				#print("User request placed in queue!", flush=True)
 				request_cond.notify()
-				print("Notifying request handler.", flush=True)
+				#print("Notifying request handler.", flush=True)
 		else:
 			continue
 
@@ -179,7 +183,7 @@ def send_to_server(my_tuple, PID):
 	wait(3)
 	try:
 		data = str(my_tuple).encode()
-		out_socks[PID].sendall(data) #send back to leader , BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL)
+		out_socks[PID].sendall(data) 
 		print(f"sent to server {9000+PID}: {my_tuple}")
 	except:
 		exc_type = sys.exc_info()[0]
@@ -197,13 +201,14 @@ def handle_request_type(recv_tuple):
 
 	match recv_msg:
 			case "PREPARE":
+
 				recv_bal = recv_tuple[1]
+
 				election_lock.acquire()
 
 				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM):
 					CURRENT_LEADER_ID = recv_bal[1]
-					print(f"NEW LEADER: {CURRENT_LEADER_ID}")
-					wait(2)		
+					print(f"NEW LEADER: {CURRENT_LEADER_ID}")	
 					send_to_server(("PROMISE", BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL), CURRENT_LEADER_ID)
 
 				election_lock.release()
@@ -226,9 +231,9 @@ def handle_request_type(recv_tuple):
 					
 				with user_input_cond:
 					while ACCEPT_VAL == None:
-						print("waiting on user_input_cond, thread waiting ...", flush=True) 
+						#print("waiting on user_input_cond, thread waiting ...", flush=True) 
 						user_input_cond.wait()
-					print("user_input has data, thread awake ...", flush=True)  
+					#print("user_input has data, thread awake ...", flush=True)  
 					
 
 					temp_vals = []
@@ -254,10 +259,16 @@ def handle_request_type(recv_tuple):
 				#print(recv_bal, BALLOT_NUM)
 				#print("from recv ACCEPT", recv_tuple)
 				print(f"MESSAGE RECEIVED (ACCEPTOR): {recv_tuple}")
-				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM):
+				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM) and LOCAL_BLOCKCHAIN.chain_len() <= BALLOT_NUM[2]:
 					ACCEPT_NUM = recv_tuple[1] #AcceptNum <- b (BallotNum)
 					ACCEPT_VAL = recv_tuple[2] #AcceptVal <- V (myVal)
 					send_to_server(("ACCEPTED", recv_tuple[1], recv_tuple[2]), CURRENT_LEADER_ID)
+
+				'''
+					"7. An acceptor should NOT reply ACCEPTED to an ACCEPT if the acceptor’s 
+					blockchain is deeper than the depth from the ballot number"
+				'''
+
 
 			case "ACCEPTED":
 				with block_lock:
@@ -272,6 +283,7 @@ def handle_request_type(recv_tuple):
 					with block_lock:
 						LOCAL_BLOG.make_new_post(ACCEPT_VAL[0], ACCEPT_VAL[1], ACCEPT_VAL[2])
 						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
+						BALLOT_NUM[2] += 1
 						print(f"DECIDED: {ACCEPT_VAL}")
 						completed_request = user_requests_q.get()
 						print("Request completed:", completed_request, flush=True)
@@ -281,8 +293,7 @@ def handle_request_type(recv_tuple):
 						with processing_cond:
 							#print("GOT HEERE")
 							processing_cond.notify()
-							print("thread notified in handle_user_request")
-
+							#print("thread notified in handle_user_request")
 				else:
 					return
 				
@@ -292,6 +303,7 @@ def handle_request_type(recv_tuple):
 				with block_lock:
 						LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
 						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
+						BALLOT_NUM[2] += 1
 						print("DECIDED:", recv_tuple[2])
 			case _:
 				print("default-test")
@@ -357,7 +369,7 @@ if __name__ == "__main__":
 	PORTS = {}
 	MY_PORT = 9000 + MY_PID
 	CURRENT_LEADER_ID = None
-	BALLOT_NUM = [0, MY_PID] #<ballotNum, processID>
+	BALLOT_NUM = [0, MY_PID, 0] #<ballotNum/seqNum, processID, depth> 
 	ACCEPT_NUM = 0 #<,>
 	ACCEPT_VAL = [None, None, None]
 

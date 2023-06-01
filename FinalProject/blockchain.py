@@ -37,6 +37,14 @@ class Blockchain:
     def add_block(self, user_operation):
         self.head = Block(self.head, user_operation)
 
+    def chain_len(self):
+         len = 0
+         curr = self.head
+         while curr is not None:
+                len +=1
+                curr = curr.prev
+         return len
+
     def print_chain(self):
         curr = self.head
         if curr == None:
