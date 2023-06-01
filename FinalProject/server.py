@@ -90,16 +90,16 @@ def handle_user_request():
 					ACCEPT_VAL[3] = 0	# post = 0
 				elif request_type == "comment":
 					if LOCAL_BLOCKCHAIN.chain_len == 0 or LOCAL_BLOG.find_post_by_title(curr_user_data[2]) == None:
-						print("POST DOES NOT EXISTS")
-						print("TST")
+						print("POST DOES NOT EXISTS")	
 						return
 					else:
+						print("TST1")
 						ACCEPT_VAL[3] = 1	# post = 0
 				
 				user_input_cond.notify()
 		
 				if CURRENT_LEADER_ID != None:
-						print("TST")
+						print("TST2")
 						BALLOT_NUM[0] += 1	
 						handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 

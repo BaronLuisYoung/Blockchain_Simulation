@@ -38,7 +38,7 @@ class Blog: ##[TODO] Testing of class usage and link with Blockchain
                 print("-----")
                 print("Comments:")
                 for comm in post['comments']:
-                    print(f"{comm.username}: {comm.comment}")
+                    print(f"{comm['username']}: {comm['comment']}")
         print("-----")
             
     def view_user_posts(self, username):
