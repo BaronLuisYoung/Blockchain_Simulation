@@ -56,69 +56,59 @@ LOCAL_BLOCKCHAIN = Blockchain()
 
 user_requests_q = Queue()
 msg_requests_q = Queue()
-
+#accept_q = Queue()
 out_socks = [None] * 6
 RECV_VALS = []
 curr_curr_user_data = completed_request = None
 accept_count = 0
 #__________________________________________________________________#
-def handle_user_request(): #handles all user rquests for replication
+
+def handle_user_request(): 
 	global LOCAL_BLOG, LOCAL_BLOCKCHAIN, ACCEPT_VAL, CURRENT_LEADER_ID, BALLOT_NUM
-	global user_requests_q, curr_user_data, completed_request
+	global user_requests_q, curr_user_data, completed_request, flag3
 
 	while True: 
 		with request_cond:
 			
 			while user_requests_q.empty():
-				#print("No user request received ...", flush=True)
 				request_cond.wait()
-				#print("User request queue has data, thread awake!", flush=True)
 
 			processing_cond.acquire()
 			
 			curr_user_data = user_requests_q.queue[0]
-			#print(f"Current process, curr_curr_user_data:{curr_user_data}", flush=True)
 
 			request_type = curr_user_data[0]
 			
 			if CURRENT_LEADER_ID == None:
 				begin_election()
-				#wait(3) --- undo this in case break
 
-			if request_type == "post":
-				with user_input_cond:
-					#print("user_input_cond: post-start")
-					ACCEPT_VAL[0] = curr_user_data[1] # username = data[1]
-					ACCEPT_VAL[1] = curr_user_data[2] # title = data[2]
-					ACCEPT_VAL[2] = curr_user_data[3]	# content = data[3]	
-					user_input_cond.notify()
-					#print("user_input_cond notified", flush=True)
+			with user_input_cond:
+				ACCEPT_VAL[0] = curr_user_data[1]	# username = data[1]
+				ACCEPT_VAL[1] = curr_user_data[2] 	# title = data[2]
+				ACCEPT_VAL[2] = curr_user_data[3]	# content = data[3]	
+				if request_type == "post":
+					ACCEPT_VAL[3] = 0	# post = 0
+				elif request_type == "comment":
+					if LOCAL_BLOCKCHAIN.chain_len == 0 or LOCAL_BLOG.find_post_by_title(curr_user_data[2]) == None:
+						print("POST DOES NOT EXISTS")
+						print("TST")
+						return
+					else:
+						ACCEPT_VAL[3] = 1	# post = 0
 				
+				user_input_cond.notify()
+		
 				if CURRENT_LEADER_ID != None:
-					BALLOT_NUM[0] += 1
-					handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
+						print("TST")
+						BALLOT_NUM[0] += 1	
+						handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 
 
-				#WORKS FOR NOW BUT VERY DANGEROUS
-				# while(completed_request == curr_curr_user_data):
-				# 	print("waiting on process to finish (processing_cond.wait)), thread waiting ...", flush=True)
-				processing_cond.wait() 
-					#print("process finished (processing_cond.wait)), thread awake!", flush=True)
+			#WORKS FOR NOW BUT VERY DANGEROUS
+			processing_cond.wait() 
 
-				
-				#print("(processing_cond.wait() notified, thread awake in handle_user_request", flush=True)
-				#print("process finished (processing_lock.release()), thread awake, lock released!", flush=True)
-
-			elif request_type == "comment":
-				pass
-			elif request_type == "blog":
-				pass
-			elif request_type == "view":	
-				pass
-			elif request_type == "read":
-				pass
-			#print("(processing_cond.wait() notified, thread awake in recv_msg", flush=True)
 			processing_cond.release()
+			
 			request_cond.notify()
 		
 def get_user_input():
@@ -154,6 +144,16 @@ def get_user_input():
 			LOCAL_BLOG.view_all_posts()
 		elif user_input_string == "blockchain":
 			LOCAL_BLOCKCHAIN.print_chain()
+
+
+		elif user_input_string == "blog":
+			pass
+		elif user_input_string == "view":	
+			pass
+		elif user_input_string == "read":
+			pass
+
+
 		elif check_user_input(user_input_string) == True:
 			with request_cond:
 				user_requests_q.put(data)
@@ -196,12 +196,12 @@ def handle_request_type(recv_tuple):
 	global CURRENT_LEADER_ID, BALLOT_NUM, QUORUM_COUNT
 	global PORTS, ACCEPT_VAL, ACCEPT_NUM, RECV_VALS
 	global accept_count, myVal, curr_user_data
-	flag2 = flag1 = True
+	flag3 = flag2 = flag1 =  True
 	recv_msg = recv_tuple[0]
 
 	match recv_msg:
 			case "PREPARE":
-
+				print(f"RECEIVED PREPARE: {recv_tuple}")
 				recv_bal = recv_tuple[1]
 
 				election_lock.acquire()
@@ -256,14 +256,13 @@ def handle_request_type(recv_tuple):
 
 			case "ACCEPT":
 				recv_bal = recv_tuple[1]
-				#print(recv_bal, BALLOT_NUM)
-				#print("from recv ACCEPT", recv_tuple)
 				print(f"MESSAGE RECEIVED (ACCEPTOR): {recv_tuple}")
 				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM) and LOCAL_BLOCKCHAIN.chain_len() <= BALLOT_NUM[2]:
+
 					ACCEPT_NUM = recv_tuple[1] #AcceptNum <- b (BallotNum)
 					ACCEPT_VAL = recv_tuple[2] #AcceptVal <- V (myVal)
-					send_to_server(("ACCEPTED", recv_tuple[1], recv_tuple[2]), CURRENT_LEADER_ID)
 
+					send_to_server(("ACCEPTED", recv_tuple[1], recv_tuple[2]), CURRENT_LEADER_ID)
 				'''
 					"7. An acceptor should NOT reply ACCEPTED to an ACCEPT if the acceptor’s 
 					blockchain is deeper than the depth from the ballot number"
@@ -281,27 +280,33 @@ def handle_request_type(recv_tuple):
 					print("ACCEPTED MAJORITY RECIEVED", flush=True)
 					flag2 = False
 					with block_lock:
-						LOCAL_BLOG.make_new_post(ACCEPT_VAL[0], ACCEPT_VAL[1], ACCEPT_VAL[2])
+						if recv_tuple[2][3] == 0: #0 for post
+							LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
+						else: #1 for comment
+							LOCAL_BLOG.comment_on_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
 						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
 						BALLOT_NUM[2] += 1
 						print(f"DECIDED: {ACCEPT_VAL}")
-						completed_request = user_requests_q.get()
-						print("Request completed:", completed_request, flush=True)
+						handle_bcast_msg(("DECIDE", BALLOT_NUM, ACCEPT_VAL))
 						curr_user_data = None
 						accept_count = 0
 						flag2 = True
 						with processing_cond:
 							#print("GOT HEERE")
 							processing_cond.notify()
+							completed_request = user_requests_q.get()
+							print("Request completed:", completed_request, flush=True)
 							#print("thread notified in handle_user_request")
 				else:
 					return
 				
-				handle_bcast_msg(("DECIDE", BALLOT_NUM, ACCEPT_VAL))
 
 			case "DECIDE":
 				with block_lock:
-						LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
+						if recv_tuple[2][3] == 0: #0 for post
+							LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
+						else: #1 for comment
+							LOCAL_BLOG.comment_on_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
 						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
 						BALLOT_NUM[2] += 1
 						print("DECIDED:", recv_tuple[2])
@@ -371,7 +376,7 @@ if __name__ == "__main__":
 	CURRENT_LEADER_ID = None
 	BALLOT_NUM = [0, MY_PID, 0] #<ballotNum/seqNum, processID, depth> 
 	ACCEPT_NUM = 0 #<,>
-	ACCEPT_VAL = [None, None, None]
+	ACCEPT_VAL = [None, None, None, None] #<username, title, content, OP>
 
 	in_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	in_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

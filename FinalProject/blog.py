@@ -34,14 +34,17 @@ class Blog: ##[TODO] Testing of class usage and link with Blockchain
             print(f"Title: {post['title']}")
             print(f"Author: {post['author']}")
             print(f"Content: {post['content']}")
+            if post['comments']:
+                print("-----")
+                print("Comments:")
+                for comm in post['comments']:
+                    print(f"{comm.username}: {comm.comment}")
         print("-----")
             
-
     def view_user_posts(self, username):
         if username in self.users:
             user_posts = self.users[username]
-            sorted_posts = sorted(user_posts, key=lambda x: x['timestamp'])
-            for post in sorted_posts:
+            for post in user_posts:
                 print(f"Title: {post['title']}")
                 print(f"Content: {post['content']}")
                 
