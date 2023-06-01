@@ -63,24 +63,27 @@ curr_curr_user_data = completed_request = None
 accept_count = 0
 #__________________________________________________________________#
 def handle_user_request(): #handles all user rquests for replication
-	global user_requests_q
-	global LOCAL_BLOG
-	global LOCAL_BLOCKCHAIN
-	global ACCEPT_VAL
-	global curr_user_data, completed_request
+	global LOCAL_BLOG, LOCAL_BLOCKCHAIN, ACCEPT_VAL, CURRENT_LEADER_ID
+	global user_requests_q, curr_user_data, completed_request
 
 	while True: 
 		with request_cond:
+			
 			while user_requests_q.empty():
 				#print("No user request received ...", flush=True)
 				request_cond.wait()
 				#print("User request queue has data, thread awake!", flush=True)
 
 			processing_cond.acquire()
+			
 			curr_user_data = user_requests_q.queue[0]
 			#print(f"Current process, curr_curr_user_data:{curr_user_data}", flush=True)
 
 			request_type = curr_user_data[0]
+			
+			if CURRENT_LEADER_ID == None:
+				begin_election()
+				#wait(3) --- undo this in case break
 
 			if request_type == "post":
 				with user_input_cond:
@@ -91,12 +94,19 @@ def handle_user_request(): #handles all user rquests for replication
 					user_input_cond.notify()
 					print("user_input_cond notified", flush=True)
 				
-				while(completed_request == None):
-					#print("waiting on process to finish (processing_cond.wait)), thread waiting ...", flush=True)
-					processing_cond.wait()
+				if CURRENT_LEADER_ID != None:
+					print("TESTING")
+					handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 
+
+				#WORKS FOR NOW BUT VERY DANGEROUS
+				# while(completed_request == curr_curr_user_data):
+				# 	print("waiting on process to finish (processing_cond.wait)), thread waiting ...", flush=True)
+				processing_cond.wait() 
+					#print("process finished (processing_cond.wait)), thread awake!", flush=True)
+
+				
 				#print("(processing_cond.wait() notified, thread awake in handle_user_request", flush=True)
-				processing_cond.release()
 				#print("process finished (processing_lock.release()), thread awake, lock released!", flush=True)
 
 			elif request_type == "comment":
@@ -108,7 +118,7 @@ def handle_user_request(): #handles all user rquests for replication
 			elif request_type == "read":
 				pass
 			#print("(processing_cond.wait() notified, thread awake in recv_msg", flush=True)
-
+			processing_cond.release()
 			request_cond.notify()
 		
 def get_user_input():
@@ -141,18 +151,7 @@ def get_user_input():
 		elif user_input_string == "blockchain":
 			LOCAL_BLOCKCHAIN.print_chain()
 		elif check_user_input(user_input_string) == True:
-					
-			
-			if CURRENT_LEADER_ID == None:
-				begin_election()
-				#wait(3) --- undo this in case break
-
 			with request_cond:
-				# while user_requests_q.full():
-				# 	#print("User request queue full thread waiting ...", flush=True)
-				# 	request_cond.wait()
-				# 	print("User request queue has room, thread awake!", flush=True)
-
 				user_requests_q.put(data)
 				print("User request placed in queue!", flush=True)
 				request_cond.notify()
@@ -210,7 +209,6 @@ def handle_request_type(recv_tuple):
 				election_lock.release()
 
 			case "PROMISE":
-
 				with election_lock:  #each thrd the recv adds to count and appends their promise
 					QUORUM_COUNT +=1
 					print(f"MESSAGE RECIEVED: {recv_tuple}")
@@ -281,8 +279,9 @@ def handle_request_type(recv_tuple):
 						accept_count = 0
 						flag2 = True
 						with processing_cond:
+							#print("GOT HEERE")
 							processing_cond.notify()
-							#print("thread notified in handle_user_request")
+							print("thread notified in handle_user_request")
 
 				else:
 					return
