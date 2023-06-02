@@ -65,7 +65,7 @@ accept_count = 0
 
 def handle_user_request(): 
 	global LOCAL_BLOG, LOCAL_BLOCKCHAIN, ACCEPT_VAL, CURRENT_LEADER_ID, BALLOT_NUM
-	global user_requests_q, curr_user_data, completed_request, flag3
+	global user_requests_q, curr_user_data, completed_request, accept_count
 
 	while True: 
 		with request_cond:
@@ -76,7 +76,7 @@ def handle_user_request():
 			processing_cond.acquire()
 			
 			curr_user_data = user_requests_q.queue[0]
-
+			accept_count = 0
 			request_type = curr_user_data[0]
 			
 			if CURRENT_LEADER_ID == None:
@@ -93,13 +93,11 @@ def handle_user_request():
 						print("POST DOES NOT EXISTS")	
 						return
 					else:
-						print("TST1")
 						ACCEPT_VAL[3] = 1	# post = 0
 				
 				user_input_cond.notify()
 		
 				if CURRENT_LEADER_ID != None:
-						print("TST2")
 						BALLOT_NUM[0] += 1	
 						handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 
@@ -154,7 +152,7 @@ def get_user_input():
 			pass
 
 
-		elif check_user_input(user_input_string) == True:
+		elif check_user_input(user_input_string) == True and data[1] and data[2] and data[3]:
 			with request_cond:
 				user_requests_q.put(data)
 				#print("User request placed in queue!", flush=True)
@@ -273,24 +271,28 @@ def handle_request_type(recv_tuple):
 				with block_lock:
 					accept_count +=1
 					print(f"MESSAGE RECEIVED: {recv_tuple}")
-					if accept_count < MAX_QUORUM:
+					if accept_count < MAX_QUORUM or accept_count > MAX_QUORUM :
 						return
 
-				if accept_count >= MAX_QUORUM and flag2:
+				if accept_count >= MAX_QUORUM:
 					print("ACCEPTED MAJORITY RECIEVED", flush=True)
-					flag2 = False
+					#flag2 = False #might be able to remove flag
 					with block_lock:
+						
 						if recv_tuple[2][3] == 0: #0 for post
 							LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
 						else: #1 for comment
 							LOCAL_BLOG.comment_on_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
+						
 						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
+						
 						BALLOT_NUM[2] += 1
+						
 						print(f"DECIDED: {ACCEPT_VAL}")
 						handle_bcast_msg(("DECIDE", BALLOT_NUM, ACCEPT_VAL))
+						
 						curr_user_data = None
-						accept_count = 0
-						flag2 = True
+			
 						with processing_cond:
 							#print("GOT HEERE")
 							processing_cond.notify()
