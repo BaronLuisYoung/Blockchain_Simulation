@@ -87,10 +87,14 @@ def handle_user_request():
 				ACCEPT_VAL[1] = curr_user_data[2] 	# title = data[2]
 				ACCEPT_VAL[2] = curr_user_data[3]	# content = data[3]	
 				if request_type == "post":
-					ACCEPT_VAL[3] = 0	# post = 0
+					if LOCAL_BLOG.find_post_by_title(curr_user_data[2]) != None:
+						print("DUPLICATE TITLE")
+						return
+					else:
+						ACCEPT_VAL[3] = 0	# post = 0
 				elif request_type == "comment":
 					if LOCAL_BLOCKCHAIN.chain_len == 0 or LOCAL_BLOG.find_post_by_title(curr_user_data[2]) == None:
-						print("POST DOES NOT EXISTS")	
+						print("CANNOT COMMENT")	
 						return
 					else:
 						ACCEPT_VAL[3] = 1	# post = 0
@@ -118,8 +122,10 @@ def get_user_input():
 	threading.Thread(target=handle_user_request).start()
 
 	while True:
-		data = input().split(", ")
+		data = input().split(",")
 		user_input_string = data[0]
+
+
 		if user_input_string == "exit":
 			exit()
 		elif user_input_string == "ballotnum":
@@ -134,24 +140,19 @@ def get_user_input():
 				if sock != None:
 					print(sock.getpeername()[1])
 			print(out_socks)
+
 		elif user_input_string == "leader":
 			print(CURRENT_LEADER_ID)
 		elif user_input_string == "qcount":
 			print(QUORUM_COUNT)
-		elif user_input_string == "posts":
-			LOCAL_BLOG.view_all_posts()
 		elif user_input_string == "blockchain":
 			LOCAL_BLOCKCHAIN.print_chain()
-
-
 		elif user_input_string == "blog":
-			pass
+			LOCAL_BLOG.view_all_posts()
 		elif user_input_string == "view":	
-			pass
+			LOCAL_BLOG.view_user_posts(data[1])
 		elif user_input_string == "read":
-			pass
-
-
+			LOCAL_BLOG.view_post_by_title(data[1])
 		elif check_user_input(user_input_string) == True and data[1] and data[2] and data[3]:
 			with request_cond:
 				user_requests_q.put(data)

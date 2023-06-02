@@ -29,6 +29,8 @@ class Blog: ##[TODO] Testing of class usage and link with Blockchain
 
     def view_all_posts(self):
         #sorted_posts = sorted(self.posts, key=lambda x: x['timestamp'])
+        if not self.posts:
+            print("BLOG EMPTY")
         for post in self.posts:
             print("-----")
             print(f"Title: {post['title']}")
@@ -42,14 +44,17 @@ class Blog: ##[TODO] Testing of class usage and link with Blockchain
         print("-----")
             
     def view_user_posts(self, username):
-        if username in self.users:
+        if self.users and username in self.users:
             user_posts = self.users[username]
             for post in user_posts:
                 print(f"Title: {post['title']}")
                 print(f"Content: {post['content']}")
-                
+                print("Comments:")
+                for comment in post['comments']:
+                    print(f"\tUsername: {comment['username']}")
+                    print(f"\tComment: {comment['comment']}")
         else:
-            print(f"No posts found for user: {username}")
+            print("NO POST")  
 
     def view_post_comments(self, title):
         post = self.find_post_by_title(title)
@@ -60,9 +65,21 @@ class Blog: ##[TODO] Testing of class usage and link with Blockchain
             for comment in post['comments']:
                 print(f"\tUsername: {comment['username']}")
                 print(f"\tComment: {comment['comment']}")
-                
         else:
             print("The post doesn't exist.")
+
+    def view_post_by_title(self, title):
+        post = self.find_post_by_title(title)
+        print(post)
+        if post:
+            print(f"Title: {post['title']}")
+            print(f"Content: {post['content']}")
+            print("Comments:")
+            for comment in post['comments']:
+                print(f"\tUsername: {comment['username']}")
+                print(f"\tComment: {comment['comment']}")
+        else:
+            print("POST NOT FOUND")
 
     def find_post_by_title(self, title):
         for post in self.posts:
