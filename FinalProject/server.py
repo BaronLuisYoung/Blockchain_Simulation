@@ -42,7 +42,7 @@ def exit():
 	os._exit(0) 
     
 #UTILITY 
-new_ballot_is_larger_or_eq = lambda A, B: (int(A[0]) > int(B[0])) or (int(A[0]) == int(B[0]) and int(A[1]) > int(B[1]))
+new_ballot_is_larger_or_eq = lambda A, B: (int(A[0]) > int(B[0])) or (int(A[0]) == int(B[0]) and int(A[1]) >= int(B[1]))
 
 def check_user_input(user_input_string):
 	valid_strings = ["post", "comment", "blog", "view", "read"]
@@ -207,6 +207,7 @@ def handle_request_type(recv_tuple):
 
 				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM):
 					CURRENT_LEADER_ID = recv_bal[1]
+					BALLOT_NUM = recv_bal
 					print(f"NEW LEADER: {CURRENT_LEADER_ID}")	
 					send_to_server(("PROMISE", BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL), CURRENT_LEADER_ID)
 
