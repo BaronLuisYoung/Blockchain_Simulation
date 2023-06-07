@@ -65,7 +65,7 @@ accept_count = 0
 
 def handle_user_request(): 
 	global LOCAL_BLOG, LOCAL_BLOCKCHAIN, ACCEPT_VAL, CURRENT_LEADER_ID, BALLOT_NUM
-	global user_requests_q, curr_user_data, completed_request, accept_count
+	global user_requests_q, curr_user_data, completed_request, accept_count, myVal
 
 	while True: 
 		with request_cond:
@@ -83,27 +83,28 @@ def handle_user_request():
 				begin_election()
 
 			with user_input_cond:
-				ACCEPT_VAL[0] = curr_user_data[1]	# username = data[1]
-				ACCEPT_VAL[1] = curr_user_data[2] 	# title = data[2]
-				ACCEPT_VAL[2] = curr_user_data[3]	# content = data[3]	
+				myVal[0] = curr_user_data[1]	# username = data[1]
+				myVal[1] = curr_user_data[2] 	# title = data[2]
+				myVal[2] = curr_user_data[3]	# content = data[3]	
 				if request_type == "post":
 					if LOCAL_BLOG.find_post_by_title(curr_user_data[2]) != None:
 						print("DUPLICATE TITLE")
 						return
 					else:
-						ACCEPT_VAL[3] = 0	# post = 0
+						myVal[3] = 0	# post = 0
 				elif request_type == "comment":
 					if LOCAL_BLOCKCHAIN.chain_len == 0 or LOCAL_BLOG.find_post_by_title(curr_user_data[2]) == None:
 						print("CANNOT COMMENT")	
 						return
 					else:
-						ACCEPT_VAL[3] = 1	# post = 0
+						myVal[3] = 1	# post = 0
 				
 				user_input_cond.notify()
 		
-				if CURRENT_LEADER_ID != None:
+				if CURRENT_LEADER_ID != None: #
 						BALLOT_NUM[0] += 1	
-						handle_bcast_msg(("ACCEPT", BALLOT_NUM, ACCEPT_VAL))
+						print("NON ELECTION REQUEST SENDING")
+						handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 
 
 			#WORKS FOR NOW BUT VERY DANGEROUS
@@ -140,11 +141,12 @@ def get_user_input():
 				if sock != None:
 					print(sock.getpeername()[1])
 			print(out_socks)
-
 		elif user_input_string == "leader":
 			print(CURRENT_LEADER_ID)
 		elif user_input_string == "qcount":
 			print(QUORUM_COUNT)
+
+	#--------------------------------------------#
 		elif user_input_string == "blockchain":
 			LOCAL_BLOCKCHAIN.print_chain()
 		elif user_input_string == "blog":
@@ -241,17 +243,16 @@ def handle_request_type(recv_tuple):
 						temp_vals.append(vals[3][0])
 
 					#print("from tempvals",temp_vals)
-					if  all(element is None for element in temp_vals):
-						myVal = ACCEPT_VAL
-						#print("from promise here", myVal)
-
-					else:	#myVal = received val with highest b 
+					if not all(element is None for element in temp_vals):
 						myVal = max(RECV_VALS, key=lambda x: (x[1][0], x[1][1]))[3] #sort by acceptNum (bval)
+						#myVal = ACCEPT_VAL
+						#print("from promise here", myVal)
 					#print("from promise", myVal)
 					RECV_VALS = []
 					temp_vals = []
 					QUORUM_COUNT = 0
 					flag1 = True
+					
 				handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 
 			case "ACCEPT":
@@ -290,8 +291,8 @@ def handle_request_type(recv_tuple):
 						
 						BALLOT_NUM[2] += 1
 						
-						print(f"DECIDED: {ACCEPT_VAL}")
-						handle_bcast_msg(("DECIDE", BALLOT_NUM, ACCEPT_VAL))
+						print(f"DECIDED: {myVal}")
+						handle_bcast_msg(("DECIDE", BALLOT_NUM, myVal))
 						
 						curr_user_data = None
 			
@@ -380,8 +381,8 @@ if __name__ == "__main__":
 	CURRENT_LEADER_ID = None
 	BALLOT_NUM = [0, MY_PID, 0] #<ballotNum/seqNum, processID, depth> 
 	ACCEPT_NUM = 0 #<,>
-	ACCEPT_VAL = [None, None, None, None] #<username, title, content, OP>
-
+	ACCEPT_VAL = [None, None, None, None] #<username, title, content, OP> OP = {"post" = 0, "comment" = 1}
+	myVal = [None,None,None, None]
 	in_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	in_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 	in_sock.bind((IP, MY_PORT))
