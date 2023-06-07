@@ -72,6 +72,7 @@ def handle_user_request():
 			
 			while user_requests_q.empty():
 				request_cond.wait()
+				print("I AM ALIVE")
 
 			processing_cond.acquire()
 			
@@ -102,10 +103,13 @@ def handle_user_request():
 				user_input_cond.notify()
 		
 				if CURRENT_LEADER_ID != None: #
+					if CURRENT_LEADER_ID == MY_PID:	
 						BALLOT_NUM[0] += 1	
 						print("NON ELECTION REQUEST SENDING")
 						handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
-
+					else:
+						#send_to_server((),CURRENT_LEADER_ID)
+						pass #TBD
 
 			#WORKS FOR NOW BUT VERY DANGEROUS
 			processing_cond.wait() 
@@ -175,6 +179,7 @@ def handle_bcast_msg(data):
 				sock.sendall(bytes(f"{data}", "utf-8"))
 			except:
 				print(f"exception in sending to port", flush=True)
+				print(sock)
 				exc_type = sys.exc_info()[0]
 				print("Exception type:", exc_type)
 				continue
@@ -262,7 +267,7 @@ def handle_request_type(recv_tuple):
 
 					ACCEPT_NUM = recv_tuple[1] #AcceptNum <- b (BallotNum)
 					ACCEPT_VAL = recv_tuple[2] #AcceptVal <- V (myVal)
-
+					print("FROM ACCEPT")
 					send_to_server(("ACCEPTED", recv_tuple[1], recv_tuple[2]), CURRENT_LEADER_ID)
 				'''
 					"7. An acceptor should NOT reply ACCEPTED to an ACCEPT if the acceptor’s 
@@ -302,10 +307,13 @@ def handle_request_type(recv_tuple):
 							completed_request = user_requests_q.get()
 							print("Request completed:", completed_request, flush=True)
 							#print("thread notified in handle_user_request")
+							if not user_requests_q.empty():
+								print("GOTHHHHHEEEEER")
+								with request_cond:
+									request_cond.notify()
 				else:
 					return
 				
-
 			case "DECIDE":
 				with block_lock:
 						if recv_tuple[2][3] == 0: #0 for post
@@ -315,6 +323,8 @@ def handle_request_type(recv_tuple):
 						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
 						BALLOT_NUM[2] += 1
 						print("DECIDED:", recv_tuple[2])
+					
+						
 			case _:
 				print("default-test")
 
