@@ -103,7 +103,7 @@ def handle_user_request():
 		
 				if CURRENT_LEADER_ID != None:
 						BALLOT_NUM[0] += 1	
-						handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
+						handle_bcast_msg(("ACCEPT", BALLOT_NUM, ACCEPT_VAL))
 
 
 			#WORKS FOR NOW BUT VERY DANGEROUS
