@@ -17,11 +17,9 @@ from blockchain import *
 from queue import Queue
 #___________________________FOR SERVER CMDs________________________#
 election_lock = threading.Lock()
-connection_lock = threading.Lock()
-connection_cond = threading.Condition(connection_lock)
-request_lock = threading.Lock()
+
 request_cond = threading.Condition()
-print_lock = threading.Lock()
+
 user_input_lock = threading.Lock()
 user_input_cond = threading.Condition(user_input_lock)
 
@@ -65,58 +63,48 @@ accept_count = 0
 
 def handle_user_request(): 
 	global LOCAL_BLOG, LOCAL_BLOCKCHAIN, ACCEPT_VAL, CURRENT_LEADER_ID, BALLOT_NUM
-	global user_requests_q, curr_user_data, completed_request, accept_count, myVal
+	global user_requests_q, curr_user_data, completed_request, accept_count, myVal, running_process_flag
 
 	while True: 
-		with request_cond:
-			
-			while user_requests_q.empty():
-				request_cond.wait()
-				print("I AM ALIVE")
-
-			processing_cond.acquire()
-			
-			curr_user_data = user_requests_q.queue[0]
-			accept_count = 0
-			request_type = curr_user_data[0]
-			
-			if CURRENT_LEADER_ID == None:
-				begin_election()
-
-			with user_input_cond:
-				myVal[0] = curr_user_data[1]	# username = data[1]
-				myVal[1] = curr_user_data[2] 	# title = data[2]
-				myVal[2] = curr_user_data[3]	# content = data[3]	
-				if request_type == "post":
-					if LOCAL_BLOG.find_post_by_title(curr_user_data[2]) != None:
-						print("DUPLICATE TITLE")
-						return
-					else:
-						myVal[3] = 0	# post = 0
-				elif request_type == "comment":
-					if LOCAL_BLOCKCHAIN.chain_len == 0 or LOCAL_BLOG.find_post_by_title(curr_user_data[2]) == None:
-						print("CANNOT COMMENT")	
-						return
-					else:
-						myVal[3] = 1	# post = 0
+		while not user_requests_q.empty():
+			if running_process_flag == False:
+				running_process_flag = True	
+				curr_user_data = user_requests_q.queue[0] #peek/grab the first request
+				accept_count = 0
+				request_type = curr_user_data[0]
 				
-				user_input_cond.notify()
-		
-				if CURRENT_LEADER_ID != None: #
-					if CURRENT_LEADER_ID == MY_PID:	
-						BALLOT_NUM[0] += 1	
-						print("NON ELECTION REQUEST SENDING")
-						handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
-					else:
-						#send_to_server((),CURRENT_LEADER_ID)
-						pass #TBD
+				if CURRENT_LEADER_ID == None:
+					begin_election()
 
-			#WORKS FOR NOW BUT VERY DANGEROUS
-			processing_cond.wait() 
-
-			processing_cond.release()
+				with user_input_cond:
+					myVal[0] = curr_user_data[1]	# username = data[1]
+					myVal[1] = curr_user_data[2] 	# title = data[2]
+					myVal[2] = curr_user_data[3]	# content = data[3]	
+					if request_type == "post":
+						if LOCAL_BLOG.find_post_by_title(curr_user_data[2]) != None:
+							failed_request = user_requests_q.get()
+							print("DUPLICATE TITLE:", failed_request)
+							
+							continue
+						else:
+							myVal[3] = 0	# post = 0
+					elif request_type == "comment":
+						if LOCAL_BLOCKCHAIN.chain_len == 0 or LOCAL_BLOG.find_post_by_title(curr_user_data[2]) == None:
+							failed_request = user_requests_q.get()
+							print("CANNOT COMMENT:", failed_request)	
+							continue
+						else:
+							myVal[3] = 1	# post = 0
+					
+					user_input_cond.notify()
 			
-			request_cond.notify()
+					if CURRENT_LEADER_ID != None: #
+						if CURRENT_LEADER_ID == MY_PID:	
+							BALLOT_NUM[0] += 1	
+							print("NON ELECTION REQUEST SENDING")
+							handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
+						else:
+							send_to_server(("SEND_REQUEST", BALLOT_NUM, myVal), CURRENT_LEADER_ID)
 		
 def get_user_input():
 
@@ -129,7 +117,6 @@ def get_user_input():
 	while True:
 		data = input().split(",")
 		user_input_string = data[0]
-
 
 		if user_input_string == "exit":
 			exit()
@@ -149,7 +136,14 @@ def get_user_input():
 			print(CURRENT_LEADER_ID)
 		elif user_input_string == "qcount":
 			print(QUORUM_COUNT)
-
+		elif user_input_string == "acceptcount":
+			print(accept_count)
+		elif user_input_string == "msgq":
+			print(msg_requests_q.queue)
+		elif user_input_string == "runningprocess":
+			print(running_process_flag)
+		elif user_input_string == "myval":
+			print(myVal)
 	#--------------------------------------------#
 		elif user_input_string == "blockchain":
 			LOCAL_BLOCKCHAIN.print_chain()
@@ -162,9 +156,6 @@ def get_user_input():
 		elif check_user_input(user_input_string) == True and data[1] and data[2] and data[3]:
 			with request_cond:
 				user_requests_q.put(data)
-				#print("User request placed in queue!", flush=True)
-				request_cond.notify()
-				#print("Notifying request handler.", flush=True)
 		else:
 			continue
 
@@ -198,14 +189,22 @@ def send_to_server(my_tuple, PID):
 
 
 def handle_request_type(recv_tuple):
-	global msg_requests_q, user_requests_q, out_socks 
+	global msg_requests_q, user_requests_q, out_socks, running_process_flag 
 	global CURRENT_LEADER_ID, BALLOT_NUM, QUORUM_COUNT
 	global PORTS, ACCEPT_VAL, ACCEPT_NUM, RECV_VALS
 	global accept_count, myVal, curr_user_data
 	flag3 = flag2 = flag1 =  True
 	recv_msg = recv_tuple[0]
-
 	match recv_msg:
+			case "SEND_REQUEST":
+				recv_req = recv_tuple[2]
+				print("from handle_req", recv_req)
+				if recv_req[3] == 0:
+					user_requests_q.put(["post", recv_req[0], recv_req[1], recv_req[2]])
+				elif recv_req[3] == 1:
+					user_requests_q.put(["comment", recv_req[0], recv_req[1], recv_req[2]])
+				
+				
 			case "PREPARE":
 				print(f"RECEIVED PREPARE: {recv_tuple}")
 				recv_bal = recv_tuple[1]
@@ -237,12 +236,9 @@ def handle_request_type(recv_tuple):
 						return
 					
 				with user_input_cond:
-					while ACCEPT_VAL == None:
-						#print("waiting on user_input_cond, thread waiting ...", flush=True) 
+					while myVal == None:
 						user_input_cond.wait()
-					#print("user_input has data, thread awake ...", flush=True)  
 					
-
 					temp_vals = []
 					for vals in RECV_VALS:
 						temp_vals.append(vals[3][0])
@@ -250,9 +246,7 @@ def handle_request_type(recv_tuple):
 					#print("from tempvals",temp_vals)
 					if not all(element is None for element in temp_vals):
 						myVal = max(RECV_VALS, key=lambda x: (x[1][0], x[1][1]))[3] #sort by acceptNum (bval)
-						#myVal = ACCEPT_VAL
-						#print("from promise here", myVal)
-					#print("from promise", myVal)
+						
 					RECV_VALS = []
 					temp_vals = []
 					QUORUM_COUNT = 0
@@ -276,55 +270,68 @@ def handle_request_type(recv_tuple):
 
 
 			case "ACCEPTED":
-				with block_lock:
-					accept_count +=1
-					print(f"MESSAGE RECEIVED: {recv_tuple}")
-					if accept_count < MAX_QUORUM or accept_count > MAX_QUORUM :
-						return
-
+				print("FROM ACCEPTED")
+				block_lock.acquire()
+				accept_count +=1
+				print(f"MESSAGE RECEIVED: {recv_tuple}")
+				if accept_count < MAX_QUORUM or accept_count > MAX_QUORUM:
+					block_lock.release()
+					return
+				block_lock.release()
+				
 				if accept_count >= MAX_QUORUM:
 					print("ACCEPTED MAJORITY RECIEVED", flush=True)
-					#flag2 = False #might be able to remove flag
-					with block_lock:
-						
-						if recv_tuple[2][3] == 0: #0 for post
-							LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
-						else: #1 for comment
-							LOCAL_BLOG.comment_on_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
-						
-						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
-						
-						BALLOT_NUM[2] += 1
-						
-						print(f"DECIDED: {myVal}")
-						handle_bcast_msg(("DECIDE", BALLOT_NUM, myVal))
-						
-						curr_user_data = None
-			
-						with processing_cond:
-							#print("GOT HEERE")
-							processing_cond.notify()
-							completed_request = user_requests_q.get()
-							print("Request completed:", completed_request, flush=True)
-							#print("thread notified in handle_user_request")
-							if not user_requests_q.empty():
-								print("GOTHHHHHEEEEER")
-								with request_cond:
-									request_cond.notify()
+				#flag2 = False #might be able to remove flag
+				#with block_lock:
+					if recv_tuple[2][3] == 0: #0 for post
+						LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
+					else: #1 for comment
+						LOCAL_BLOG.comment_on_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
+					
+					LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
+					
+					BALLOT_NUM[2] += 1
+					
+					print(f"DECIDED: {myVal}")
+					handle_bcast_msg(("DECIDE", BALLOT_NUM, myVal))
+					
+					curr_user_data = None
+		
+					# with processing_cond:
+					# 	processing_cond.notify()
+					# 	print("processing cond")
+
+					completed_request = user_requests_q.get()
+					print("Request completed:", completed_request, flush=True)
+					running_process_flag = False
+					#print("thread notified in handle_user_request")
+					# if not user_requests_q.empty():
+					# 	print("user queue is not empty")
+					# 	with request_cond:
+					# 		request_cond.notify()
+					# 		print("request queue notified")
 				else:
 					return
 				
 			case "DECIDE":
-				with block_lock:
-						if recv_tuple[2][3] == 0: #0 for post
-							LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
-						else: #1 for comment
-							LOCAL_BLOG.comment_on_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
-						LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
-						BALLOT_NUM[2] += 1
-						print("DECIDED:", recv_tuple[2])
+				if recv_tuple[2][3] == 0: #0 for post
+					LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
+				else: #1 for comment
+					LOCAL_BLOG.comment_on_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
+				LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
+				BALLOT_NUM[2] += 1
+				print("DECIDED:", recv_tuple[2])
+				temp_list = [None, recv_tuple[2][0],recv_tuple[2][1], recv_tuple[2][2]]
+				if recv_tuple[2][3] == 0:
+					temp_list[0] = 'post'
+				else:
+					temp_list[0] = 'comment'
+
+				if (not user_requests_q.empty()) and temp_list == user_requests_q.queue[0]:
+					completed_request = user_requests_q.get()
+					print("Request completed:", completed_request)
+					running_process_flag = False
 					
-						
 			case _:
 				print("default-test")
 
@@ -355,8 +362,7 @@ def handle_recv_msg(conn):
 		else:
 			recv_tuple = msg_requests_q.get()
 		
-		# with print_lock:
-		# 	print(f"Message recieved: {recv_tuple}")
+		#print(f"Message recieved: {recv_tuple}")
 		handle_request_type(recv_tuple)
 
 
@@ -393,6 +399,7 @@ if __name__ == "__main__":
 	ACCEPT_NUM = 0 #<,>
 	ACCEPT_VAL = [None, None, None, None] #<username, title, content, OP> OP = {"post" = 0, "comment" = 1}
 	myVal = [None,None,None, None]
+	running_process_flag = False
 	in_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	in_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 	in_sock.bind((IP, MY_PORT))
