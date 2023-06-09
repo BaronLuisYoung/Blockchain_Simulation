@@ -18,13 +18,12 @@ from queue import Queue
 #___________________________FOR SERVER CMDs________________________#
 election_lock = threading.Lock()
 
-request_cond = threading.Condition()
+request_cond = threading.Condition() #not sure if problematic 
 
 user_input_lock = threading.Lock()
 user_input_cond = threading.Condition(user_input_lock)
 
 
-processing_cond = Condition()
 
 block_lock = threading.Lock()
 
@@ -263,11 +262,6 @@ def handle_request_type(recv_tuple):
 					ACCEPT_VAL = recv_tuple[2] #AcceptVal <- V (myVal)
 					print("FROM ACCEPT")
 					send_to_server(("ACCEPTED", recv_tuple[1], recv_tuple[2]), CURRENT_LEADER_ID)
-				'''
-					"7. An acceptor should NOT reply ACCEPTED to an ACCEPT if the acceptor’s 
-					blockchain is deeper than the depth from the ballot number"
-				'''
-
 
 			case "ACCEPTED":
 				print("FROM ACCEPTED")
@@ -281,8 +275,6 @@ def handle_request_type(recv_tuple):
 				
 				if accept_count >= MAX_QUORUM:
 					print("ACCEPTED MAJORITY RECIEVED", flush=True)
-				#flag2 = False #might be able to remove flag
-				#with block_lock:
 					if recv_tuple[2][3] == 0: #0 for post
 						LOCAL_BLOG.make_new_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
 					else: #1 for comment
@@ -296,20 +288,10 @@ def handle_request_type(recv_tuple):
 					handle_bcast_msg(("DECIDE", BALLOT_NUM, myVal))
 					
 					curr_user_data = None
-		
-					# with processing_cond:
-					# 	processing_cond.notify()
-					# 	print("processing cond")
 
 					completed_request = user_requests_q.get()
 					print("Request completed:", completed_request, flush=True)
 					running_process_flag = False
-					#print("thread notified in handle_user_request")
-					# if not user_requests_q.empty():
-					# 	print("user queue is not empty")
-					# 	with request_cond:
-					# 		request_cond.notify()
-					# 		print("request queue notified")
 				else:
 					return
 				
