@@ -10,7 +10,7 @@ import sys
 import ast
 import re
 from sys import stdout
-from time import sleep
+import time
 from blog import *
 from blockchain import *
 
@@ -21,9 +21,7 @@ election_lock = threading.Lock()
 request_cond = threading.Condition() #not sure if problematic 
 
 user_input_lock = threading.Lock()
-user_input_cond = threading.Condition(user_input_lock)
-
-
+user_input_cond = threading.Condition(user_input_lock) 
 
 block_lock = threading.Lock()
 
@@ -53,10 +51,9 @@ LOCAL_BLOCKCHAIN = Blockchain()
 
 user_requests_q = Queue()
 msg_requests_q = Queue()
-#accept_q = Queue()
 out_socks = [None] * 6
 RECV_VALS = []
-curr_curr_user_data = completed_request = None
+completed_request = None
 accept_count = 0
 #__________________________________________________________________#
 
@@ -227,7 +224,7 @@ def handle_request_type(recv_tuple):
 					if QUORUM_COUNT < 2: #they simply return if havent reached quorum
 							return
 
-					if QUORUM_COUNT >= 2 and MY_PID != CURRENT_LEADER_ID and flag1:
+					if QUORUM_COUNT >= 2 and CURRENT_LEADER_ID == None and MY_PID != CURRENT_LEADER_ID and flag1:
 						flag1 = False
 						print("ELECTED")
 						CURRENT_LEADER_ID = MY_PID
@@ -242,7 +239,6 @@ def handle_request_type(recv_tuple):
 					for vals in RECV_VALS:
 						temp_vals.append(vals[3][0])
 
-					#print("from tempvals",temp_vals)
 					if not all(element is None for element in temp_vals):
 						myVal = max(RECV_VALS, key=lambda x: (x[1][0], x[1][1]))[3] #sort by acceptNum (bval)
 						
@@ -344,7 +340,6 @@ def handle_recv_msg(conn):
 		else:
 			recv_tuple = msg_requests_q.get()
 		
-		#print(f"Message recieved: {recv_tuple}")
 		handle_request_type(recv_tuple)
 
 
