@@ -79,7 +79,10 @@ def handle_user_request():
 				print("RUNNING PROCESS FLAG SET TO TRUE")
 
 				curr_user_data = user_requests_q.queue[0] #peek/grab the first request
+				block_lock.acquire()
 				accept_count = 0
+				block_lock.release()
+
 				request_type = curr_user_data[0]
 				
 				if CURRENT_LEADER_ID == None:
