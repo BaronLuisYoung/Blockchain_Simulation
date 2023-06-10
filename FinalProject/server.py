@@ -35,7 +35,7 @@ def timer(t):
 	print("Timer finished!")
 	if waiting_on_leader_flag == True:
 		CURRENT_LEADER_ID = None
-		running_process_flag = False
+		#running_process_flag = False
 
 def exit():
 	in_sock.close()
@@ -43,7 +43,7 @@ def exit():
 		if sock != None:
 			sock.close()
 	stdout.flush() 
-	os._exit(0) 
+	os._exit(0)
     
 #UTILITY 
 new_ballot_is_larger_or_eq = lambda A, B: (int(A[0]) > int(B[0])) or (int(A[0]) == int(B[0]) and int(A[1]) >= int(B[1]))
@@ -84,19 +84,21 @@ def handle_user_request():
 				
 				if CURRENT_LEADER_ID == None:
 					begin_election()
+				
+				print("QUEUE BEFORE OPERATION", user_requests_q.queue)
 
 				with user_input_cond:
 					myVal[0] = curr_user_data[1]	# username = data[1]
 					myVal[1] = curr_user_data[2] 	# title = data[2]
 					myVal[2] = curr_user_data[3]	# content = data[3]	
 
-					block_lock.acquire()
+					print("CURR_USER_DATA1 ",curr_user_data)
 					if request_type == "post":
-						if LOCAL_BLOG.find_post_by_title(curr_user_data[2]) != None:
-							LOCAL_BLOG.view_all_posts()
+						if LOCAL_BLOG.find_post_by_title(myVal[1]) != None:
+							#LOCAL_BLOG.view_all_posts()
 							failed_request = user_requests_q.get()
 							print("DUPLICATE TITLE:", failed_request)
-							block_lock.release()
+							running_process_flag = False
 							continue
 						else:
 							myVal[3] = 0	# post = 0
@@ -104,11 +106,10 @@ def handle_user_request():
 						if LOCAL_BLOCKCHAIN.chain_len == 0 or LOCAL_BLOG.find_post_by_title(curr_user_data[2]) == None:
 							failed_request = user_requests_q.get()
 							print("CANNOT COMMENT:", failed_request)
-							block_lock.release()
+							running_process_flag = False
 							continue
 						else:
 							myVal[3] = 1	# post = 0
-					block_lock.release()
 					user_input_cond.notify()
 			
 					if CURRENT_LEADER_ID != None: #
@@ -118,10 +119,10 @@ def handle_user_request():
 							handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 						else:
 							send_to_server(("SEND_REQUEST", BALLOT_NUM, myVal), CURRENT_LEADER_ID)
-							waiting_on_leader_flag = True
-							#print("HELLO!")
-							timer_thread = threading.Thread(target=timer(15,))
-							timer_thread.start()
+							# waiting_on_leader_flag = True
+							# #print("HELLO!")
+							# timer_thread = threading.Thread(target=timer(15,))
+							# timer_thread.start()
 		
 def get_user_input():
 
@@ -218,13 +219,15 @@ def handle_request_type(recv_tuple):
 	recv_msg = recv_tuple[0]
 	match recv_msg:
 			case "SEND_REQUEST":
+				block_lock.acquire()
 				recv_req = recv_tuple[2]
 				print("from handle_req", recv_req)
 				if recv_req[3] == 0:
 					user_requests_q.put(["post", recv_req[0], recv_req[1], recv_req[2]])
+					#print("QUEUE AFTER HANDLE REQUEST", user_requests_q.queue)
 				elif recv_req[3] == 1:
 					user_requests_q.put(["comment", recv_req[0], recv_req[1], recv_req[2]])
-				
+				block_lock.release()
 				
 			case "PREPARE":
 				print(f"RECEIVED PREPARE: {recv_tuple}")
@@ -336,7 +339,9 @@ def handle_request_type(recv_tuple):
 				if (not user_requests_q.empty()) and temp_list == user_requests_q.queue[0]:
 					completed_request = user_requests_q.get()
 					print("Request completed:", completed_request)
-				running_process_flag = False
+					running_process_flag = False
+				if user_requests_q.empty():
+					running_process_flag = False
 				ACCEPT_VAL = [None, None, None, None] #reset ACCEPT_VAL
 
 
