@@ -35,7 +35,7 @@ def timer(t):
 	print("Timer finished!")
 	if waiting_on_leader_flag == True:
 		CURRENT_LEADER_ID = None
-		#running_process_flag = False
+		running_process_flag = False
 
 def exit():
 	in_sock.close()
@@ -87,6 +87,9 @@ def handle_user_request():
 				
 				if CURRENT_LEADER_ID == None:
 					begin_election()
+				# elif CURRENT_LEADER_ID == -1:
+				# 	begin_election()
+				# 	continue
 				
 				print("QUEUE BEFORE OPERATION", user_requests_q.queue)
 
@@ -122,10 +125,10 @@ def handle_user_request():
 							handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 						else:
 							send_to_server(("SEND_REQUEST", BALLOT_NUM, myVal), CURRENT_LEADER_ID)
-							# waiting_on_leader_flag = True
-							# #print("HELLO!")
-							# timer_thread = threading.Thread(target=timer(15,))
-							# timer_thread.start()
+							waiting_on_leader_flag = True
+							#print("HELLO!")
+							timer_thread = threading.Thread(target=timer(15,))
+							timer_thread.start()
 		
 def get_user_input():
 
@@ -161,7 +164,7 @@ def get_user_input():
 			print(accept_count)
 		elif user_input_string == "msgq":
 			print(msg_requests_q.queue)
-		elif user_input_string == "runningprocess":
+		elif user_input_string == "rp":
 			print(running_process_flag)
 		elif user_input_string == "myval":
 			print(myVal)
@@ -196,7 +199,7 @@ def handle_bcast_msg(data):
 			except:
 				print(f"exception in sending to port", flush=True)
 				#print(sock)
-				exc_type = sys.exc_info()[0]
+				#exc_type = sys.exc_info()[0]
 				#print("Exception type:", exc_type)
 				continue
 	
@@ -207,7 +210,7 @@ def send_to_server(my_tuple, PID):
 		out_socks[PID].sendall(data) 
 		print(f"sent to server {9000+PID}: {my_tuple}")
 	except:
-		exc_type = sys.exc_info()[0]
+		#exc_type = sys.exc_info()[0]
 		#print("Exception type:", exc_type)
 		print(f"failed in sending to server", flush=True)
 
@@ -226,10 +229,14 @@ def handle_request_type(recv_tuple):
 				recv_req = recv_tuple[2]
 				print("from handle_req", recv_req)
 				if recv_req[3] == 0:
-					user_requests_q.put(["post", recv_req[0], recv_req[1], recv_req[2]])
+					temp_post = ["post", recv_req[0], recv_req[1], recv_req[2]]
+					if temp_post not in user_requests_q.queue:
+						user_requests_q.put(temp_post)
 					#print("QUEUE AFTER HANDLE REQUEST", user_requests_q.queue)
 				elif recv_req[3] == 1:
-					user_requests_q.put(["comment", recv_req[0], recv_req[1], recv_req[2]])
+					temp_comment = ["comment", recv_req[0], recv_req[1], recv_req[2]]
+					if temp_comment not in user_requests_q.queue:
+						user_requests_q.put(temp_comment)
 				block_lock.release()
 				
 			case "PREPARE":
@@ -241,7 +248,9 @@ def handle_request_type(recv_tuple):
 				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM):
 					CURRENT_LEADER_ID = recv_bal[1]
 					BALLOT_NUM = recv_bal
-					print(f"NEW LEADER: {CURRENT_LEADER_ID}")	
+					print(f"NEW LEADER: {CURRENT_LEADER_ID}")
+					if not user_requests_q.empty():
+							send_to_server(("SEND_REQUEST", BALLOT_NUM, myVal), CURRENT_LEADER_ID)
 					send_to_server(("PROMISE", BALLOT_NUM, ACCEPT_NUM, ACCEPT_VAL), CURRENT_LEADER_ID)
 
 				election_lock.release()
@@ -255,7 +264,7 @@ def handle_request_type(recv_tuple):
 					if QUORUM_COUNT < 2: #they simply return if havent reached quorum
 							return
 
-					if QUORUM_COUNT >= 2 and CURRENT_LEADER_ID == None and MY_PID != CURRENT_LEADER_ID and flag1:
+					if QUORUM_COUNT >= 2 and (CURRENT_LEADER_ID == None ) and MY_PID != CURRENT_LEADER_ID and flag1:
 						flag1 = False
 						print("ELECTED")
 						CURRENT_LEADER_ID = MY_PID
@@ -353,7 +362,7 @@ def handle_request_type(recv_tuple):
 
 
 def handle_recv_msg(conn):
-	global msg_requests_q, out_socks 
+	global msg_requests_q, out_socks, waiting_on_leader_flag
 	while True:
 		if msg_requests_q.empty():
 			try:
@@ -378,6 +387,9 @@ def handle_recv_msg(conn):
 		else:
 			recv_tuple = msg_requests_q.get()
 		
+		if recv_tuple[1][1] == CURRENT_LEADER_ID:
+			waiting_on_leader_flag = False
+
 		handle_request_type(recv_tuple)
 
 
