@@ -34,8 +34,10 @@ def timer(t):
 	time.sleep(t) 	# Wait for x seconds
 	print("Timer finished!")
 	if waiting_on_leader_flag == True:
+		print("TIMEOUT")
 		CURRENT_LEADER_ID = None
 		running_process_flag = False
+	
 
 def exit():
 	in_sock.close()
