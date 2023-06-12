@@ -3,6 +3,7 @@
 from hashlib import sha256
 from random import randint
 from time import sleep
+import re
 hash_func = lambda x: sha256(x.encode('utf-8')).hexdigest()
 #___________________BLOCK_CHAIN_CLASSES_____________________#
 
@@ -18,12 +19,17 @@ class Block:
                 return (digest, computed_nonce)
             computed_nonce = computed_nonce + 1 ##[TODO]some random computation 
 
-    def __init__(self, prev, user_operation):
+    def __init__(self, prev, user_operation, nonce=None, hashed_prev_block=None):
         if prev is None:
             self.prev = None
             self.user_operation = user_operation 
             self.hashed_prev_block = '0'*64
             self.nonce = '0' #nonce not needed for gen. blk
+        elif nonce is not None and hashed_prev_block is not None:
+            self.prev = prev
+            self.user_operation = user_operation
+            self.hashed_prev_block = hashed_prev_block
+            self.nonce = nonce
         else:
             self.prev = prev
             self.user_operation = user_operation
@@ -61,4 +67,43 @@ class Blockchain:
             for x in reversed(chain):
                 chain_str = chain_str + x
             print(f"{chain_str}") #[TODO]fix formatting !!
-        
+    
+    def store_chain(self, PID):
+        curr = self.head
+        with open(f"restore_chain_{PID}.txt", "w+") as f:
+            if curr == None:
+                f.write("[]")
+            else: 
+                #create chain list
+                chain = []
+                while curr is not None:
+                    chain.append(( "(" + str(curr.user_operation) +  ", " + str(curr.nonce) + ", " + str(curr.hashed_prev_block) + ")\n"))
+                    curr = curr.prev
+                
+                #reverse chain list in chronological order 
+                chain_str = ""
+                for x in reversed(chain):
+                    chain_str = chain_str + x
+                f.write(f"{chain_str}")
+    
+    def restore_chain(self, PID):
+        curr = self.head
+        print("Restoring chain ...")
+        try:
+            with open(f"restore_chain_{PID}.txt", "r") as f:
+                for line in f:
+                    if line == "[]":
+                        return
+                    else:
+                        line = line.strip("()\n")
+                        match = re.match(r"\[(.*?)\], (.*), (.*)", line)
+                        if match:
+                            user_op = "[" + match.group(1) + "]"
+                            nonce = match.group(2)
+                            hashed_prev_block = match.group(3)
+                            self.head = Block(self.head, user_op, nonce, hashed_prev_block)
+
+        except FileNotFoundError:
+            print("No restore file found, starting new chain ...")
+            return
+

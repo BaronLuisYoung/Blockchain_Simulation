@@ -17,3 +17,6 @@ server5:
 
 clean:
 	rm -fr __pycache__
+
+diskclean:
+	rm -f *.txt

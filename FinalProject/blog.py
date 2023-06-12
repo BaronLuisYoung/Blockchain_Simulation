@@ -1,3 +1,5 @@
+import re
+
 class Blog: ##[TODO] Testing of class usage and link with Blockchain
     def __init__(self):
         self.users = {}
@@ -86,3 +88,21 @@ class Blog: ##[TODO] Testing of class usage and link with Blockchain
             if post['title'] == title:
                 return post
         return None
+    
+    def restore_posts(self, PID):
+        try:
+            with open(f"restore_chain_{PID}.txt", "r") as f:
+                for line in f:
+                    if line == "[]":
+                        return
+                    else:
+                        line = line.strip("()\n")
+                        match = re.match(r"\[(.*?)\], (.*), (.*)", line)
+                        if match:
+                            user_op = match.group(1).replace("\'", "").split(", ")
+                            if int(user_op[3]) == 0:
+                                self.make_new_post(user_op[0], user_op[1], user_op[2])
+                            else:
+                                self.comment_on_post(user_op[0], user_op[1], user_op[2]) 
+        except FileNotFoundError:
+            return

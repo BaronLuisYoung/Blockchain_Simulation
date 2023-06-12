@@ -177,6 +177,8 @@ def get_user_input():
 	#--------------------------------------------#
 		elif user_input_string == "blockchain":
 			LOCAL_BLOCKCHAIN.print_chain()
+		elif user_input_string == "chainlen":
+			print(LOCAL_BLOCKCHAIN.chain_len())
 		elif user_input_string == "blog":
 			LOCAL_BLOG.view_all_posts()
 		elif user_input_string == "view":	
@@ -323,6 +325,7 @@ def handle_request_type(recv_tuple):
 					BALLOT_NUM[2] += 1
 					
 					print(f"DECIDED: {myVal}")
+					LOCAL_BLOCKCHAIN.store_chain(MY_PID)
 					handle_bcast_msg(("DECIDE", BALLOT_NUM, myVal))
 					
 					curr_user_data = None
@@ -342,6 +345,7 @@ def handle_request_type(recv_tuple):
 				else: #1 for comment
 					LOCAL_BLOG.comment_on_post(recv_tuple[2][0], recv_tuple[2][1], recv_tuple[2][2])
 				LOCAL_BLOCKCHAIN.add_block(str(recv_tuple[2]))
+				LOCAL_BLOCKCHAIN.store_chain(MY_PID)
 				BALLOT_NUM[2] += 1
 				print("DECIDED:", recv_tuple[2])
 				temp_list = [None, recv_tuple[2][0],recv_tuple[2][1], recv_tuple[2][2]]
@@ -435,6 +439,10 @@ if __name__ == "__main__":
 	in_sock.bind((IP, MY_PORT))
 	in_sock.listen()
 
+	LOCAL_BLOCKCHAIN.restore_chain(MY_PID)
+	LOCAL_BLOG.restore_posts(MY_PID)
+	# BALLOT_NUM[0] = LOCAL_BLOCKCHAIN.chain_len()
+	BALLOT_NUM[2] = LOCAL_BLOCKCHAIN.chain_len()
 	for i in range(1,6): #create a 'send' thread for each new connection 
 		if i != MY_PID:
 			threading.Thread(target=send_out_connections, args=(i,)).start()
