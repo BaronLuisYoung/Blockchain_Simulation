@@ -67,6 +67,7 @@ RECV_VALS = []
 completed_request = None
 accept_count = 0
 waiting_on_leader_flag = False
+link_enabled = [True] * 6
 #__________________________________________________________________#
 
 def handle_user_request(): 
@@ -171,6 +172,8 @@ def get_user_input():
 			print(ACCEPT_NUM)
 		elif user_input_string == "acceptval":
 			print(ACCEPT_VAL)
+		elif user_input_string == "links":
+			print(link_enabled)
 	#--------------------------------------------#
 		elif user_input_string == "blockchain":
 			LOCAL_BLOCKCHAIN.print_chain()
@@ -182,6 +185,14 @@ def get_user_input():
 			LOCAL_BLOG.view_user_posts(data[1])
 		elif user_input_string == "read":
 			LOCAL_BLOG.view_post_by_title(data[1])
+		elif user_input_string == "failLink":
+			send_to_server(("FAIL_LINK", MY_PID), int(data[1]))
+			link_enabled[int(data[1])] = False
+			print(f"link broken on: {data[1]}")
+		elif user_input_string == "fixLink":
+			link_enabled[int(data[1])] = True
+			print(f"link fixed on: {data[1]}")
+			send_to_server(("FIX_LINK", MY_PID), int(data[1]))
 		elif check_user_input(user_input_string) == True and data[1] and data[2] and data[3]:
 			with request_cond:
 				user_requests_q.put(data)
@@ -192,9 +203,10 @@ def handle_bcast_msg(data):
 	global out_socks
 	wait(3)
 	print(f"Bcasting to all: {data}")
+	i = 0
 	for sock in out_socks: 
 		#wait(1)
-		if sock != None:
+		if sock != None and link_enabled[i]:
 			try:
 				sock.sendall(bytes(f"{data}", "utf-8"))
 			except:
@@ -203,18 +215,21 @@ def handle_bcast_msg(data):
 				#exc_type = sys.exc_info()[0]
 				#print("Exception type:", exc_type)
 				continue
+		i+=1
 	
 def send_to_server(my_tuple, PID):
 	wait(3)
 	try:
 		data = str(my_tuple).encode()
-		out_socks[PID].sendall(data) 
-		print(f"sent to server {9000+PID}: {my_tuple}")
+		if link_enabled[PID]:	
+			out_socks[PID].sendall(data)
+		#print(my_tuple)
+		if my_tuple[0] != "FIX_LINK" and my_tuple[0] != "FAIL_LINK": 
+			print(f"sent to server {9000+PID}: {my_tuple}")
 	except:
 		#exc_type = sys.exc_info()[0]
 		#print("Exception type:", exc_type)
 		print(f"failed in sending to server", flush=True)
-
 
 def handle_request_type(recv_tuple):
 	global CURRENT_LEADER_ID, BALLOT_NUM, QUORUM_COUNT
@@ -225,6 +240,12 @@ def handle_request_type(recv_tuple):
 	flag1 =  True
 	recv_msg = recv_tuple[0]
 	match recv_msg:
+			case "FIX_LINK":
+				link_enabled[recv_tuple[1]] = True
+				print(f"LINK RESTORED: {recv_tuple[1]}")
+			case "FAIL_LINK":
+				link_enabled[recv_tuple[1]] = False
+				print(f"LINK FAILED: {recv_tuple[1]}")
 			case "SEND_REQUEST":
 				block_lock.acquire()
 				recv_req = recv_tuple[2]
@@ -369,7 +390,6 @@ def handle_request_type(recv_tuple):
 			case _:
 				print("default-test")
 
-
 def handle_recv_msg(conn):
 	global msg_requests_q, out_socks, waiting_on_leader_flag
 	while True:
@@ -381,9 +401,13 @@ def handle_recv_msg(conn):
 				continue
 
 			if not data:
-				conn.close()		
+				print("closing socket")
+				for sock in out_socks:
+					if sock != None and sock == conn:
+						print("closed conn")
+						sock.close()
 				break
-			
+
 			data = re.sub(r'\)\(', ')*(', data)
 			data_list = data.split('*')
 			for request in data_list:
@@ -392,18 +416,20 @@ def handle_recv_msg(conn):
 			recv_tuple = msg_requests_q.get() #DEQUE WHEN WE HAVE DECIED
 		else:
 			recv_tuple = msg_requests_q.get()
-		
-		if recv_tuple[1][1] == CURRENT_LEADER_ID:
+
+		if recv_tuple[1] != "FAIL_LINK" or \
+		   recv_tuple[1] != "FIX_LINK" or \
+			recv_tuple[1][1] == CURRENT_LEADER_ID:
 			waiting_on_leader_flag = False
 
 		handle_request_type(recv_tuple)
-
 
 def send_out_connections(i):
 	global CURRENT_LEADER_ID
 	global new_ID
 	global out_socks
 	new_out_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	new_out_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 	while True:
 		try:
 			new_out_sock.connect((IP, 9000+i))
@@ -411,7 +437,8 @@ def send_out_connections(i):
 		except:
 			continue
 		out_socks[i] = new_out_sock
-
+		print("appened new socket")
+		re
 
 def begin_election():
 	global BALLOT_NUM
@@ -442,6 +469,7 @@ if __name__ == "__main__":
 	LOCAL_BLOCKCHAIN.restore_chain(MY_PID)
 	LOCAL_BLOG.restore_posts(MY_PID)
 	BALLOT_NUM[2] = LOCAL_BLOCKCHAIN.chain_len()
+
 	for i in range(1,6): #create a 'send' thread for each new connection 
 		if i != MY_PID:
 			threading.Thread(target=send_out_connections, args=(i,)).start()
@@ -451,10 +479,9 @@ if __name__ == "__main__":
 	while True:
 		try:
 			conn, addr = in_sock.accept()
+			#print(f"conn obj: {conn}")
 			print(f"success, recieved: {addr}")
 		except:
 			print("exception in accept", flush=True)
 			break
 		threading.Thread(target=handle_recv_msg, args=(conn,)).start()
-
-
