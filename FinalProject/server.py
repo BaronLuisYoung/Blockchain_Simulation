@@ -386,7 +386,6 @@ def handle_request_type(recv_tuple):
 					running_process_flag = False
 				ACCEPT_VAL = [None, None, None, None] #reset ACCEPT_VAL
 
-
 			case _:
 				print("default-test")
 
@@ -438,7 +437,6 @@ def send_out_connections(i):
 			continue
 		out_socks[i] = new_out_sock
 		print("appened new socket")
-		re
 
 def begin_election():
 	global BALLOT_NUM
@@ -457,7 +455,7 @@ if __name__ == "__main__":
 	MY_PORT = 9000 + MY_PID
 	CURRENT_LEADER_ID = None
 	BALLOT_NUM = [0, MY_PID, 0] #<ballotNum/seqNum, processID, depth> 
-	ACCEPT_NUM = 0 #<,>
+	ACCEPT_NUM = 0 
 	ACCEPT_VAL = [None, None, None, None] #<username, title, content, OP> OP = {"post" = 0, "comment" = 1}
 	myVal = [None,None,None, None]
 	running_process_flag = False
