@@ -89,9 +89,6 @@ def handle_user_request():
 				
 				if CURRENT_LEADER_ID == None:
 					begin_election()
-				# elif CURRENT_LEADER_ID == -1:
-				# 	begin_election()
-				# 	continue
 				
 				print("QUEUE BEFORE OPERATION", user_requests_q.queue)
 
@@ -111,13 +108,14 @@ def handle_user_request():
 						else:
 							myVal[3] = 0	# post = 0
 					elif request_type == "comment":
-						if LOCAL_BLOCKCHAIN.chain_len == 0 or LOCAL_BLOG.find_post_by_title(curr_user_data[2]) == None:
+						if (LOCAL_BLOCKCHAIN.chain_len == 0 or LOCAL_BLOG.find_post_by_title(curr_user_data[2]) == None)\
+							or LOCAL_BLOG.find_comment(curr_user_data[1],curr_user_data[2],curr_user_data[3]):
 							failed_request = user_requests_q.get()
 							print("CANNOT COMMENT:", failed_request)
 							running_process_flag = False
 							continue
-						else:
-							myVal[3] = 1	# post = 0
+						else: 
+							myVal[3] = 1 # comment = 1
 					user_input_cond.notify()
 			
 					if CURRENT_LEADER_ID != None: #
@@ -128,7 +126,6 @@ def handle_user_request():
 						else:
 							send_to_server(("SEND_REQUEST", BALLOT_NUM, myVal), CURRENT_LEADER_ID)
 							waiting_on_leader_flag = True
-							#print("HELLO!")
 							timer_thread = threading.Thread(target=timer(15,))
 							timer_thread.start()
 		
@@ -300,11 +297,10 @@ def handle_request_type(recv_tuple):
 				recv_bal = recv_tuple[1]
 				print(f"MESSAGE RECEIVED (ACCEPTOR): {recv_tuple}")
 				if new_ballot_is_larger_or_eq(recv_bal, BALLOT_NUM) and LOCAL_BLOCKCHAIN.chain_len() <= BALLOT_NUM[2]:
-
 					ACCEPT_NUM = recv_tuple[1] #AcceptNum <- b (BallotNum)
 					ACCEPT_VAL = recv_tuple[2] #AcceptVal <- V (myVal)
 					send_to_server(("ACCEPTED", recv_tuple[1], recv_tuple[2]), CURRENT_LEADER_ID)
-
+				
 			case "ACCEPTED":
 				block_lock.acquire()
 				accept_count +=1
@@ -324,16 +320,23 @@ def handle_request_type(recv_tuple):
 					
 					BALLOT_NUM[2] += 1
 					
-					print(f"DECIDED: {myVal}")
 					LOCAL_BLOCKCHAIN.store_chain(MY_PID)
+					print(f"DECIDED: {myVal}")
+					wait(1)
 					handle_bcast_msg(("DECIDE", BALLOT_NUM, myVal))
 					
 					curr_user_data = None
 
-					completed_request = user_requests_q.get()
-					print("Request completed:", completed_request, flush=True)
+					temp_list = [None, recv_tuple[2][0],recv_tuple[2][1], recv_tuple[2][2]]
+					if recv_tuple[2][3] == 0:
+						temp_list[0] = 'post'
+					else:
+						temp_list[0] = 'comment'
+					if (not user_requests_q.empty()) and temp_list == user_requests_q.queue[0]:
+						completed_request = user_requests_q.get()
+						print("Request completed:", completed_request, flush=True)
+					
 					print(user_requests_q.queue)
-
 					running_process_flag = False
 				else:
 					block_lock.release()
@@ -379,9 +382,6 @@ def handle_recv_msg(conn):
 
 			if not data:
 				conn.close()		
-				# if conn in out_socks:
-				# 	out_socks.remove(conn)				
-				#print(f"connection closed", flush=True)
 				break
 			
 			data = re.sub(r'\)\(', ')*(', data)
@@ -411,7 +411,7 @@ def send_out_connections(i):
 		except:
 			continue
 		out_socks[i] = new_out_sock
-		break
+
 
 def begin_election():
 	global BALLOT_NUM
@@ -441,7 +441,6 @@ if __name__ == "__main__":
 
 	LOCAL_BLOCKCHAIN.restore_chain(MY_PID)
 	LOCAL_BLOG.restore_posts(MY_PID)
-	# BALLOT_NUM[0] = LOCAL_BLOCKCHAIN.chain_len()
 	BALLOT_NUM[2] = LOCAL_BLOCKCHAIN.chain_len()
 	for i in range(1,6): #create a 'send' thread for each new connection 
 		if i != MY_PID:

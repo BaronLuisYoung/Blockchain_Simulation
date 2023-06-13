@@ -19,13 +19,24 @@ class Blog: ##[TODO] Testing of class usage and link with Blockchain
         self.posts.append(post)
         self.users[username].append(post)
 
+    def find_comment(self, username, title, comment):
+        post = self.find_post_by_title(title)
+        if post:
+            temp_comment = {'username': username,
+                        'comment': comment}           
+        if temp_comment not in post['comments']:
+            return False
+        else:
+            return True
+
+        
     def comment_on_post(self, username, title, comment):
         post = self.find_post_by_title(title)
         if post:
-            post['comments'].append({
-                'username': username,
-                'comment': comment
-            })
+            temp_comment = {'username': username,
+                            'comment': comment}           
+            if temp_comment not in post['comments']:
+                post['comments'].append(temp_comment)
         else:
             print("Cannot create comment. The post doesn't exist.")
 
