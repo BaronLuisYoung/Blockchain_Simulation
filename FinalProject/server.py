@@ -135,6 +135,7 @@ def handle_user_request():
 						if CURRENT_LEADER_ID == MY_PID:	
 							BALLOT_NUM[0] += 1	
 							#print("NON ELECTION REQUEST SENDING")
+							print(f"Broadcasting ACCEPT: {BALLOT_NUM} {myVal}")
 							handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 						else:
 							send_to_server(("SEND_REQUEST", BALLOT_NUM, myVal), CURRENT_LEADER_ID)
@@ -251,6 +252,7 @@ def handle_request_type(recv_tuple):
 	recv_msg = recv_tuple[0]
 	match recv_msg:
 			case "CRASH":
+				wait(2)
 				recv_pid = int(recv_tuple[1])
 				out_socks[recv_pid] = None
 				send_out_connections(recv_pid)
@@ -449,12 +451,14 @@ def send_out_connections(i):
 			continue
 		out_socks[i] = new_out_sock
 		print("appened new socket")
+		break
 
 def begin_election():
 	global BALLOT_NUM
 	print("Beginning Election")
 	BALLOT_NUM[0] +=1 
 	BALLOT_NUM[1] = MY_PID
+	print(f"Broadcasting PREPARE: {BALLOT_NUM}")
 	handle_bcast_msg(("PREPARE", BALLOT_NUM))
 
 if __name__ == "__main__":
