@@ -30,16 +30,25 @@ def wait(t):
 
 def timer(t):
 	global CURRENT_LEADER_ID, running_process_flag
-	print("timer start")
+	#print("timer start")
 	time.sleep(t) 	# Wait for x seconds
-	print("Timer finished!")
+	#print("Timer finished!")
 	if waiting_on_leader_flag == True:
 		print("TIMEOUT")
 		CURRENT_LEADER_ID = None
 		running_process_flag = False
 	
-
 def exit():
+	in_sock.close()
+	for sock in out_socks:
+		if sock != None:
+			sock.close()
+	stdout.flush() 
+	os._exit(0)
+
+def crash():
+	print("CRASHING PROCESS ...")
+	handle_bcast_msg(("CRASH",MY_PID))
 	in_sock.close()
 	for sock in out_socks:
 		if sock != None:
@@ -79,9 +88,12 @@ def handle_user_request():
 		while not user_requests_q.empty():
 			if running_process_flag == False:
 				running_process_flag = True
-				print("RUNNING PROCESS FLAG SET TO TRUE")
+				#print("RUNNING PROCESS FLAG SET TO TRUE")
 
+				if user_requests_q.empty():	
+					continue
 				curr_user_data = user_requests_q.queue[0] #peek/grab the first request
+				
 				block_lock.acquire()
 				accept_count = 0
 				block_lock.release()
@@ -91,14 +103,14 @@ def handle_user_request():
 				if CURRENT_LEADER_ID == None:
 					begin_election()
 				
-				print("QUEUE BEFORE OPERATION", user_requests_q.queue)
+				#print("QUEUE BEFORE OPERATION", user_requests_q.queue)
 
 				with user_input_cond:
 					myVal[0] = curr_user_data[1]	# username = data[1]
 					myVal[1] = curr_user_data[2] 	# title = data[2]
 					myVal[2] = curr_user_data[3]	# content = data[3]	
 
-					print("CURR_USER_DATA1 ",curr_user_data)
+					#print("CURR_USER_DATA1 ",curr_user_data)
 					if request_type == "post":
 						if LOCAL_BLOG.find_post_by_title(myVal[1]) != None:
 							#LOCAL_BLOG.view_all_posts()
@@ -122,7 +134,7 @@ def handle_user_request():
 					if CURRENT_LEADER_ID != None: #
 						if CURRENT_LEADER_ID == MY_PID:	
 							BALLOT_NUM[0] += 1	
-							print("NON ELECTION REQUEST SENDING")
+							#print("NON ELECTION REQUEST SENDING")
 							handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 						else:
 							send_to_server(("SEND_REQUEST", BALLOT_NUM, myVal), CURRENT_LEADER_ID)
@@ -144,6 +156,8 @@ def get_user_input():
 
 		if user_input_string == "exit":
 			exit()
+		elif user_input_string == "crash":
+			crash()
 		elif user_input_string == "ballotnum":
 				print(BALLOT_NUM)
 		elif user_input_string == "queue":
@@ -156,6 +170,8 @@ def get_user_input():
 				if sock != None:
 					print(sock.getpeername()[1])
 			print(out_socks)
+		elif user_input_string == "insock":
+			print(in_sock)
 		elif user_input_string == "leader":
 			print(CURRENT_LEADER_ID)
 		elif user_input_string == "qcount":
@@ -202,7 +218,7 @@ def get_user_input():
 def handle_bcast_msg(data):
 	global out_socks
 	wait(3)
-	print(f"Bcasting to all: {data}")
+	#print(f"Bcasting to all: {data}")
 	i = 0
 	for sock in out_socks: 
 		#wait(1)
@@ -211,9 +227,6 @@ def handle_bcast_msg(data):
 				sock.sendall(bytes(f"{data}", "utf-8"))
 			except:
 				print(f"exception in sending to port", flush=True)
-				#print(sock)
-				#exc_type = sys.exc_info()[0]
-				#print("Exception type:", exc_type)
 				continue
 		i+=1
 	
@@ -223,12 +236,9 @@ def send_to_server(my_tuple, PID):
 		data = str(my_tuple).encode()
 		if link_enabled[PID]:	
 			out_socks[PID].sendall(data)
-		#print(my_tuple)
 		if my_tuple[0] != "FIX_LINK" and my_tuple[0] != "FAIL_LINK": 
 			print(f"sent to server {9000+PID}: {my_tuple}")
 	except:
-		#exc_type = sys.exc_info()[0]
-		#print("Exception type:", exc_type)
 		print(f"failed in sending to server", flush=True)
 
 def handle_request_type(recv_tuple):
@@ -240,6 +250,10 @@ def handle_request_type(recv_tuple):
 	flag1 =  True
 	recv_msg = recv_tuple[0]
 	match recv_msg:
+			case "CRASH":
+				recv_pid = int(recv_tuple[1])
+				out_socks[recv_pid] = None
+				send_out_connections(recv_pid)
 			case "FIX_LINK":
 				link_enabled[recv_tuple[1]] = True
 				print(f"LINK RESTORED: {recv_tuple[1]}")
@@ -249,7 +263,7 @@ def handle_request_type(recv_tuple):
 			case "SEND_REQUEST":
 				block_lock.acquire()
 				recv_req = recv_tuple[2]
-				print("from handle_req", recv_req)
+				#print("from handle_req", recv_req)
 				if recv_req[3] == 0:
 					temp_post = ["post", recv_req[0], recv_req[1], recv_req[2]]
 					if temp_post not in user_requests_q.queue:
@@ -278,12 +292,12 @@ def handle_request_type(recv_tuple):
 				election_lock.release()
 
 			case "PROMISE":
-				with election_lock:  #each thrd the recv adds to count and appends their promise
+				with election_lock:  
 					QUORUM_COUNT +=1
 					print(f"MESSAGE RECIEVED: {recv_tuple}")
 					RECV_VALS.append(recv_tuple) # 
 					
-					if QUORUM_COUNT < 2: #they simply return if havent reached quorum
+					if QUORUM_COUNT < 2:
 							return
 
 					if QUORUM_COUNT >= 2 and (CURRENT_LEADER_ID == None ) and MY_PID != CURRENT_LEADER_ID and flag1:
@@ -308,7 +322,8 @@ def handle_request_type(recv_tuple):
 					temp_vals = []
 					QUORUM_COUNT = 0
 					flag1 = True
-					
+				
+				print(f"Broadcasting ACCEPT: {myVal}")
 				handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 
 			case "ACCEPT":
@@ -344,6 +359,7 @@ def handle_request_type(recv_tuple):
 					LOCAL_BLOCKCHAIN.store_chain(MY_PID)
 					print(f"DECIDED: {myVal}")
 					wait(1)
+					print(f"Broadcasting DECIDE: {BALLOT_NUM} {myVal}")
 					handle_bcast_msg(("DECIDE", BALLOT_NUM, myVal))
 					
 					curr_user_data = None
@@ -357,7 +373,7 @@ def handle_request_type(recv_tuple):
 						completed_request = user_requests_q.get()
 						print("Request completed:", completed_request, flush=True)
 					
-					print(user_requests_q.queue)
+					#print(user_requests_q.queue)
 					running_process_flag = False
 				else:
 					block_lock.release()
@@ -401,10 +417,6 @@ def handle_recv_msg(conn):
 
 			if not data:
 				print("closing socket")
-				for sock in out_socks:
-					if sock != None and sock == conn:
-						print("closed conn")
-						sock.close()
 				break
 
 			data = re.sub(r'\)\(', ')*(', data)
@@ -418,7 +430,7 @@ def handle_recv_msg(conn):
 
 		if recv_tuple[1] != "FAIL_LINK" or \
 		   recv_tuple[1] != "FIX_LINK" or \
-			recv_tuple[1][1] == CURRENT_LEADER_ID:
+		   recv_tuple[1][1] == CURRENT_LEADER_ID:
 			waiting_on_leader_flag = False
 
 		handle_request_type(recv_tuple)
