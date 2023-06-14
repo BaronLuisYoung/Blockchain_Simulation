@@ -135,6 +135,7 @@ def handle_user_request():
 						if CURRENT_LEADER_ID == MY_PID:	
 							BALLOT_NUM[0] += 1	
 							#print("NON ELECTION REQUEST SENDING")
+							print(f"Broadcasting ACCEPT: {BALLOT_NUM} {myVal}")
 							handle_bcast_msg(("ACCEPT", BALLOT_NUM, myVal))
 						else:
 							send_to_server(("SEND_REQUEST", BALLOT_NUM, myVal), CURRENT_LEADER_ID)
@@ -450,6 +451,7 @@ def send_out_connections(i):
 			continue
 		out_socks[i] = new_out_sock
 		print("appened new socket")
+		break
 
 def begin_election():
 	global BALLOT_NUM
