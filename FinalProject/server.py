@@ -240,7 +240,8 @@ def send_to_server(my_tuple, PID):
 		if my_tuple[0] != "FIX_LINK" and my_tuple[0] != "FAIL_LINK": 
 			print(f"sent to server {9000+PID}: {my_tuple}")
 	except:
-		print(f"failed in sending to server", flush=True)
+		#print(f"failed in sending to server", flush=True)
+		pass
 
 def handle_request_type(recv_tuple):
 	global CURRENT_LEADER_ID, BALLOT_NUM, QUORUM_COUNT
@@ -254,6 +255,7 @@ def handle_request_type(recv_tuple):
 			case "CRASH":
 				wait(2)
 				recv_pid = int(recv_tuple[1])
+				out_socks[recv_pid].close()
 				out_socks[recv_pid] = None
 				send_out_connections(recv_pid)
 			case "FIX_LINK":
@@ -418,7 +420,7 @@ def handle_recv_msg(conn):
 				continue
 
 			if not data:
-				print("closing socket")
+				#print("closing socket")
 				break
 
 			data = re.sub(r'\)\(', ')*(', data)
