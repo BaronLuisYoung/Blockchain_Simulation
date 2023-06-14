@@ -245,7 +245,8 @@ def send_to_server(my_tuple, PID):
 			#print(f"sent to server {9000+PID}: {my_tuple}")
 			pass
 	except:
-		print(f"failed in sending to server", flush=True)
+		#print(f"failed in sending to server", flush=True)
+		pass
 
 def send_update_blockhain(recv_pid):
 	global LOCAL_BLOCKCHAIN
@@ -302,6 +303,7 @@ def handle_request_type(recv_tuple):
 			case "CRASH":
 				wait(2)
 				recv_pid = int(recv_tuple[1])
+				out_socks[recv_pid].close()
 				out_socks[recv_pid] = None
 				send_out_connections(recv_pid)
 				send_update_blockhain(recv_pid)
@@ -473,7 +475,7 @@ def handle_recv_msg(conn):
 				continue
 
 			if not data:
-				print("closing socket")
+				#print("closing socket")
 				break
 			if data[0] == "R":
 				index = data.index(",")
