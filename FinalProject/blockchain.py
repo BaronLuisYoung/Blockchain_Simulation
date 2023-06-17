@@ -106,4 +106,8 @@ class Blockchain:
         except FileNotFoundError:
             print("No restore file found, starting new chain ...")
             return
+        
+    def restore_chain_after(self, user_op, nonce, hashed_prev_block):
+        self.head = Block(self.head, user_op, nonce, hashed_prev_block)
+        return
 

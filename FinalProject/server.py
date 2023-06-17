@@ -76,6 +76,7 @@ RECV_VALS = []
 completed_request = None
 accept_count = 0
 waiting_on_leader_flag = False
+flag_restore = False
 link_enabled = [True] * 6
 #__________________________________________________________________#
 
@@ -191,6 +192,8 @@ def get_user_input():
 			print(ACCEPT_VAL)
 		elif user_input_string == "links":
 			print(link_enabled)
+		elif user_input_string == "flagrestore":
+			print(flag_restore)
 	#--------------------------------------------#
 		elif user_input_string == "blockchain":
 			LOCAL_BLOCKCHAIN.print_chain()
@@ -210,6 +213,7 @@ def get_user_input():
 			link_enabled[int(data[1])] = True
 			print(f"link fixed on: {data[1]}")
 			send_to_server(("FIX_LINK", MY_PID), int(data[1]))
+			send_update_blockhain(int(data[1]))
 		elif check_user_input(user_input_string) == True and data[1] and data[2] and data[3]:
 			with request_cond:
 				user_requests_q.put(data)
@@ -238,29 +242,80 @@ def send_to_server(my_tuple, PID):
 		if link_enabled[PID]:	
 			out_socks[PID].sendall(data)
 		if my_tuple[0] != "FIX_LINK" and my_tuple[0] != "FAIL_LINK": 
-			print(f"sent to server {9000+PID}: {my_tuple}")
+			#print(f"sent to server {9000+PID}: {my_tuple}")
+			pass
 	except:
 		#print(f"failed in sending to server", flush=True)
 		pass
+
+def send_update_blockhain(recv_pid):
+	global LOCAL_BLOCKCHAIN
+	with open(f"restore_chain_{MY_PID}.txt", "r") as f:
+		data = ""
+		line = f.readline()
+		while line:
+			data += line
+			line = f.readline()
+	wait(3)
+	print(f"SENDING RESTORE_CHAIN")
+	try:
+		out_socks[recv_pid].sendall(bytes(f"RESTORE_CHAIN,{data}", "utf-8"))
+	except:
+		print(f"failed in sending to update", flush=True)
 
 def handle_request_type(recv_tuple):
 	global CURRENT_LEADER_ID, BALLOT_NUM, QUORUM_COUNT
 	global PORTS, ACCEPT_VAL, ACCEPT_NUM, RECV_VALS
 	global msg_requests_q, user_requests_q, out_socks, running_process_flag 
-	global accept_count, myVal, curr_user_data, waiting_on_leader_flag
+	global accept_count, myVal, curr_user_data, waiting_on_leader_flag, flag_restore
 
 	flag1 =  True
 	recv_msg = recv_tuple[0]
 	match recv_msg:
+			case "RESTORE_CHAIN":
+				block_lock.acquire()
+				if flag_restore == False:
+					flag_restore = True
+					if recv_tuple[1].endswith("\n"):
+						recv_tuple[1] = recv_tuple[1][:-1]
+					data = recv_tuple[1].split("\n")
+					i=1
+					for line in data:
+						if i > LOCAL_BLOCKCHAIN.chain_len():
+							line = line.strip("()\n")
+							match = re.match(r"\[(.*?)\], (.*), (.*)", line)
+							if match:
+								user_op = "[" + match.group(1) + "]"
+								nonce = match.group(2)
+								hashed_prev_block = match.group(3) 
+								LOCAL_BLOCKCHAIN.restore_chain_after(user_op, nonce, hashed_prev_block)
+								blog_info = user_op.strip("[]").replace("\'", "").split(", ")
+								if int(blog_info[3]) == 0:
+									LOCAL_BLOG.make_new_post(blog_info[0], blog_info[1], blog_info[2])
+								else:
+									LOCAL_BLOG.comment_on_post(blog_info[0], blog_info[1], blog_info[2])
+						i+=1
+					LOCAL_BLOCKCHAIN.store_chain(MY_PID)
+					wait(2)
+					flag_restore = False
+
+				block_lock.release()
 			case "CRASH":
 				wait(2)
 				recv_pid = int(recv_tuple[1])
 				out_socks[recv_pid].close()
 				out_socks[recv_pid] = None
 				send_out_connections(recv_pid)
+				send_update_blockhain(recv_pid)
+				send_to_server(("NEW_LEADER", CURRENT_LEADER_ID), recv_pid)
+			
+			case "NEW_LEADER":
+				CURRENT_LEADER_ID = recv_tuple[1]
+				
 			case "FIX_LINK":
 				link_enabled[recv_tuple[1]] = True
 				print(f"LINK RESTORED: {recv_tuple[1]}")
+
 			case "FAIL_LINK":
 				link_enabled[recv_tuple[1]] = False
 				print(f"LINK FAILED: {recv_tuple[1]}")
@@ -422,7 +477,15 @@ def handle_recv_msg(conn):
 			if not data:
 				#print("closing socket")
 				break
-
+			if data[0] == "R":
+				index = data.index(",")
+				first_part = data[:index]
+				second_part = data[index+1:]
+				result = [first_part, second_part]
+				msg_requests_q.put(result)
+				handle_request_type(result)
+				msg_requests_q.get()
+				continue
 			data = re.sub(r'\)\(', ')*(', data)
 			data_list = data.split('*')
 			for request in data_list:
@@ -485,6 +548,7 @@ if __name__ == "__main__":
 	LOCAL_BLOCKCHAIN.restore_chain(MY_PID)
 	LOCAL_BLOG.restore_posts(MY_PID)
 	BALLOT_NUM[2] = LOCAL_BLOCKCHAIN.chain_len()
+	BALLOT_NUM[0] = LOCAL_BLOCKCHAIN.chain_len()
 
 	for i in range(1,6): #create a 'send' thread for each new connection 
 		if i != MY_PID:
